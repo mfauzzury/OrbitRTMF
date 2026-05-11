@@ -22,9 +22,9 @@ ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN npm run build
 
 # -----------------------------------------------------------------------------
-# Stage 2: PHP-FPM + Nginx
+# Stage 2: PHP-FPM + Nginx (PHP 8.4+ required by Symfony 8 / current composer.lock)
 # -----------------------------------------------------------------------------
-FROM php:8.3-fpm-bookworm
+FROM php:8.4-fpm-bookworm
 
 WORKDIR /var/www/html
 
