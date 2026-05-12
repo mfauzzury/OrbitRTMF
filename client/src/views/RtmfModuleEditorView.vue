@@ -197,8 +197,8 @@ async function removePhoto(photoId: number) {
   }
 }
 
-function openPhotoModal(photo: RtmfSubModulePhoto) {
-  modalPhoto.value = photo;
+function openPhotoModal(photo: RtmfModulePhoto | RtmfSubModulePhoto) {
+  modalPhoto.value = { url: photo.url, originalName: photo.originalName };
 }
 
 function closeModal() {
