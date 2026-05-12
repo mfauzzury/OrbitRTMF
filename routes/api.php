@@ -13,7 +13,9 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\RtmfActorController;
 use App\Http\Controllers\Api\RtmfFrontendController;
 use App\Http\Controllers\Api\RtmfModuleController;
+use App\Http\Controllers\Api\RtmfModulePhotoController;
 use App\Http\Controllers\Api\RtmfSubModuleController;
+use App\Http\Controllers\Api\RtmfSubModulePhotoController;
 use App\Http\Controllers\Api\RtmfFrontendAttachmentController;
 use App\Http\Controllers\Api\RtmfFrontendItemController;
 use App\Http\Controllers\Api\RtmfDashboardController;
@@ -68,6 +70,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('rtmf-actors', RtmfActorController::class)->only(['index', 'show']);
         Route::apiResource('rtmf-url-paths', RtmfUrlPathController::class)->only(['index', 'show']);
         Route::get('/rtmf-frontends/export/csv', [RtmfFrontendController::class, 'export']);
+        Route::get('/rtmf-modules/{moduleId}/photos', [RtmfModulePhotoController::class, 'index']);
+        Route::get('/rtmf-modules/{moduleId}/sub-modules/{subModuleId}/photos', [RtmfSubModulePhotoController::class, 'index']);
     });
 
     // RTMF — write (rtmf.manage)
@@ -87,6 +91,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('rtmf-frontends', RtmfFrontendController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('rtmf-modules', RtmfModuleController::class)->only(['store', 'update', 'destroy']);
         Route::apiResource('rtmf-modules.sub-modules', RtmfSubModuleController::class)->only(['store', 'update', 'destroy'])->parameters(['sub-modules' => 'sub_module']);
+        Route::post('/rtmf-modules/{moduleId}/photos', [RtmfModulePhotoController::class, 'store']);
+        Route::delete('/rtmf-modules/{moduleId}/photos/{photoId}', [RtmfModulePhotoController::class, 'destroy']);
+        Route::post('/rtmf-modules/{moduleId}/sub-modules/reorder', [RtmfSubModuleController::class, 'reorder']);
+        Route::post('/rtmf-modules/{moduleId}/sub-modules/{subModuleId}/photos', [RtmfSubModulePhotoController::class, 'store']);
+        Route::delete('/rtmf-modules/{moduleId}/sub-modules/{subModuleId}/photos/{photoId}', [RtmfSubModulePhotoController::class, 'destroy']);
         Route::apiResource('rtmf-actors', RtmfActorController::class)->only(['store', 'update', 'destroy']);
         Route::post('/rtmf-url-paths/{rtmf_url_path}/snapshot', [RtmfUrlPathController::class, 'captureSnapshot']);
         Route::apiResource('rtmf-url-paths', RtmfUrlPathController::class)->only(['store', 'update', 'destroy']);

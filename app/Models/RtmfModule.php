@@ -27,4 +27,9 @@ class RtmfModule extends Model
     {
         return $this->hasMany(RtmfSubModule::class, 'module_id')->orderBy('sort_order')->orderBy('code');
     }
+
+    public function photos(): HasMany
+    {
+        return $this->hasMany(RtmfModulePhoto::class, 'rtmf_module_id');
+    }
 }

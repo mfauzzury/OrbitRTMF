@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Http\Traits\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class RtmfSubModule extends Model
@@ -28,8 +29,13 @@ class RtmfSubModule extends Model
         return $this->belongsTo(RtmfSubModule::class, 'parent_id');
     }
 
-    public function children(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function children(): HasMany
     {
         return $this->hasMany(RtmfSubModule::class, 'parent_id');
+    }
+
+    public function photos(): HasMany
+    {
+        return $this->hasMany(RtmfSubModulePhoto::class, 'rtmf_sub_module_id');
     }
 }

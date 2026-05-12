@@ -356,22 +356,91 @@ async function remove() {
 // ── FR Items ──
 const items = ref<RtmfFrontendItem[]>([]);
 
+const ACTION_TYPES = ['Button', 'Link', 'Icon', 'Tab'];
+const isActionType = (type: string | null) => ACTION_TYPES.includes(type ?? '');
+
+// Each Action row stores paired condition+page entries: [{c: string, p: number|null}]
+type ConditionPair = { c: string; p: number | null };
+const conditionLines = ref<Record<number, ConditionPair[]>>({});
+// Search text per (itemId, lineIndex): key = `${itemId}_${li}`
+const conditionPageSearch = ref<Record<string, string>>({});
+
+function emptyPair(): ConditionPair { return { c: '', p: null }; }
+
+function initConditionLines(item: RtmfFrontendItem) {
+  if (item.id in conditionLines.value) return;
+  if (!item.condition) { conditionLines.value[item.id] = [emptyPair()]; return; }
+  try {
+    const parsed = JSON.parse(item.condition);
+    if (Array.isArray(parsed) && parsed.length) {
+      // New format: [{c, p}]
+      if (typeof parsed[0] === 'object' && parsed[0] !== null && 'c' in parsed[0]) {
+        conditionLines.value[item.id] = parsed as ConditionPair[];
+        return;
+      }
+      // Old format: string[] — migrate to [{c, p:null}]
+      conditionLines.value[item.id] = parsed.map((s: string) => ({ c: s, p: null }));
+      return;
+    }
+  } catch {}
+  // Plain string fallback
+  conditionLines.value[item.id] = [{ c: item.condition, p: null }];
+}
+
+function serializeConditionLines(itemId: number): string | null {
+  const pairs = conditionLines.value[itemId] ?? [emptyPair()];
+  const filled = pairs.filter((r) => r.c.trim() || r.p !== null);
+  if (!filled.length) return null;
+  return JSON.stringify(filled);
+}
+
+function addConditionLine(item: RtmfFrontendItem) {
+  conditionLines.value[item.id] = [...(conditionLines.value[item.id] ?? [emptyPair()]), emptyPair()];
+}
+
+function removeConditionLine(item: RtmfFrontendItem, index: number) {
+  const pairs = [...(conditionLines.value[item.id] ?? [emptyPair()])];
+  pairs.splice(index, 1);
+  conditionLines.value[item.id] = pairs.length ? pairs : [emptyPair()];
+  item.condition = serializeConditionLines(item.id);
+  saveItem(item);
+}
+
+function pageForLine(itemId: number, li: number) {
+  const p = conditionLines.value[itemId]?.[li]?.p;
+  return p != null ? (allFrontends.value.find((f) => f.id === p) ?? null) : null;
+}
+
+function pagesForLine(itemId: number, li: number): RtmfFrontend[] {
+  const q = (conditionPageSearch.value[`${itemId}_${li}`] ?? '').trim().toLowerCase();
+  return allFrontends.value.filter(
+    (f) => !q || (f.specId ?? '').toLowerCase().includes(q) || (f.title ?? '').toLowerCase().includes(q)
+  );
+}
+
 async function loadItems() {
   if (!isEdit.value) return;
   const res = await listRtmfFrontendItems(id.value);
   items.value = res.data;
+  res.data.forEach(initConditionLines);
 }
 
 async function addItem() {
   const res = await createRtmfFrontendItem(id.value, { sortOrder: items.value.length });
   items.value.push(res.data);
+  initConditionLines(res.data);
 }
 
 async function saveItem(item: RtmfFrontendItem) {
+  const condition = isActionType(item.type)
+    ? serializeConditionLines(item.id)
+    : item.condition;
   await updateRtmfFrontendItem(id.value, item.id, {
     type: item.type,
     label: item.label,
-    condition: item.condition,
+    condition,
+    validation: item.validation,
+    mandatory: item.mandatory,
     tableFieldname: item.tableFieldname,
     sortOrder: item.sortOrder,
   });
@@ -620,10 +689,6 @@ onMounted(async () => {
           <div class="space-y-1.5">
             <label class="text-sm font-medium text-slate-700">Page ID</label>
             <input v-model="specId" class="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" placeholder="PRF-AS-QS-02_01_01" />
-          </div>
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium text-slate-700">Tab Code</label>
-            <input v-model="tabCode" class="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" placeholder="PRF-AS-QS-02" />
           </div>
           <div class="space-y-1.5">
             <label class="text-sm font-medium text-slate-700">Module <span class="text-rose-500">*</span></label>
@@ -916,7 +981,7 @@ onMounted(async () => {
             </div>
             <div class="space-y-3 p-3">
               <div class="space-y-1.5">
-                <label class="text-xs font-medium text-slate-600">Vue Path</label>
+                <label class="text-xs font-medium text-slate-600">Mockup Link</label>
                 <div class="flex gap-1.5">
                   <input v-model="vuePath" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 font-mono text-xs shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" placeholder="src/views/SomeView.vue" />
                   <a :href="vuePath || undefined" target="_blank" :tabindex="vuePath ? 0 : -1" class="flex items-center justify-center rounded-lg border border-slate-300 px-2 shadow-sm transition-colors" :class="vuePath ? 'text-slate-500 hover:border-violet-400 hover:text-violet-600' : 'pointer-events-none text-slate-300'">
@@ -1077,13 +1142,15 @@ onMounted(async () => {
 
           <div class="overflow-x-auto">
             <!-- Header row -->
-            <div v-if="items.length > 0" class="grid min-w-[700px] grid-cols-[24px_44px_180px_1fr_1fr_1fr_40px] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <div v-if="items.length > 0" class="grid min-w-[900px] grid-cols-[24px_44px_180px_1fr_1fr_1fr_1fr_56px_40px] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <span></span>
               <span>#</span>
               <span>Type</span>
               <span>Label / Field</span>
               <span>Field Name</span>
-              <span>Condition</span>
+              <span>Note / Condition / Parameter</span>
+              <span>Validation / Page</span>
+              <span class="text-center">Mandatory</span>
               <span></span>
             </div>
 
@@ -1095,7 +1162,7 @@ onMounted(async () => {
                 @dragstart="onItemDragStart(index)"
                 @dragover="onItemDragOver"
                 @drop="onItemDrop(index)"
-                class="grid min-w-[700px] grid-cols-[24px_44px_180px_1fr_1fr_1fr_40px] items-start gap-3 px-5 py-3 transition-colors"
+                class="grid min-w-[900px] grid-cols-[24px_44px_180px_1fr_1fr_1fr_1fr_56px_40px] items-start gap-3 px-5 py-3 transition-colors"
                 :class="dragIndex === index ? 'bg-violet-50 opacity-60' : 'hover:bg-slate-50'"
               >
                 <!-- Drag handle -->
@@ -1130,6 +1197,7 @@ onMounted(async () => {
                     <option value="Button">Button</option>
                     <option value="Link">Link</option>
                     <option value="Icon">Icon</option>
+                    <option value="Tab">Tab</option>
                   </optgroup>
                   <optgroup label="Display">
                     <option value="Badge">Badge</option>
@@ -1138,15 +1206,21 @@ onMounted(async () => {
                     <option value="List">List</option>
                     <option value="Card">Card</option>
                     <option value="Chart">Chart</option>
-                    <option value="Tab">Tab</option>
                   </optgroup>
                   <optgroup label="Overlay">
                     <option value="Modal">Modal</option>
                     <option value="Alert">Alert / Toast</option>
                   </optgroup>
+                  <optgroup label="Notification">
+                    <option value="Notification-Email">Email</option>
+                    <option value="Notification-SMS">SMS</option>
+                    <option value="Notification-MobileApps">Mobile Apps</option>
+                    <option value="Notification-Web">Web</option>
+                  </optgroup>
                   <optgroup label="Other">
                     <option value="Component">Component</option>
                     <option value="Form">Form</option>
+                    <option value="Integrasi">Integrasi</option>
                   </optgroup>
                 </select>
 
@@ -1168,12 +1242,95 @@ onMounted(async () => {
 
                 <!-- Condition -->
                 <textarea
+                  v-if="!isActionType(item.type)"
                   v-model="item.condition"
                   @blur="saveItem(item)"
                   rows="2"
                   class="w-full resize-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
                   placeholder="e.g. status ≠ DRAF"
                 />
+                <!-- Action: condition inputs, one per pair -->
+                <div v-else class="space-y-1">
+                  <div v-for="(pair, li) in (conditionLines[item.id] ?? [{ c: '', p: null }])" :key="li" class="flex h-8 items-center gap-1">
+                    <input
+                      :value="pair.c"
+                      @input="conditionLines[item.id][li].c = ($event.target as HTMLInputElement).value"
+                      @blur="item.condition = serializeConditionLines(item.id); saveItem(item)"
+                      class="h-8 w-full rounded-md border border-slate-200 px-2 py-0 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                      placeholder="e.g. status = AKTIF"
+                    />
+                    <button type="button" @click="removeConditionLine(item, li)" class="flex-shrink-0 text-slate-300 hover:text-rose-500">
+                      <X class="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <button type="button" @click="addConditionLine(item)" class="flex h-5 items-center gap-0.5 text-xs text-violet-500 hover:underline">
+                    <Plus class="h-3 w-3" />Add
+                  </button>
+                </div>
+
+                <!-- Validation / Page -->
+                <input
+                  v-if="!isActionType(item.type)"
+                  v-model="item.validation"
+                  @blur="saveItem(item)"
+                  class="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  placeholder="e.g. Required, Max 255"
+                />
+                <!-- Action: page picker per pair, aligned to condition rows -->
+                <div v-else class="space-y-1">
+                  <div v-for="(pair, li) in (conditionLines[item.id] ?? [{ c: '', p: null }])" :key="li" class="relative h-8">
+                    <!-- Selected chip -->
+                    <div
+                      v-if="pageForLine(item.id, li)"
+                      :title="pageForLine(item.id, li)!.title ?? ''"
+                      class="flex h-8 items-center gap-1.5 overflow-hidden rounded-md border border-violet-300 bg-violet-50 px-2"
+                    >
+                      <span class="flex-shrink-0 font-mono text-[10px] text-violet-700">{{ pageForLine(item.id, li)!.specId }}</span>
+                      <span class="min-w-0 flex-1 truncate text-xs text-slate-600">{{ pageForLine(item.id, li)!.title }}</span>
+                      <button
+                        type="button"
+                        @click="conditionLines[item.id][li].p = null; item.condition = serializeConditionLines(item.id); saveItem(item)"
+                        class="flex-shrink-0 text-slate-400 hover:text-rose-500"
+                      ><X class="h-3.5 w-3.5" /></button>
+                    </div>
+                    <!-- Search -->
+                    <div v-else class="relative h-8">
+                      <input
+                        v-model="conditionPageSearch[`${item.id}_${li}`]"
+                        class="h-8 w-full rounded-md border border-slate-200 px-2 py-0 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                        placeholder="Search page…"
+                      />
+                      <div
+                        v-if="(conditionPageSearch[`${item.id}_${li}`] ?? '').trim()"
+                        class="absolute left-0 top-full z-20 mt-0.5 max-h-40 w-64 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
+                      >
+                        <div
+                          v-for="f in pagesForLine(item.id, li)"
+                          :key="f.id"
+                          :title="f.title ?? ''"
+                          @mousedown.prevent="conditionLines[item.id][li].p = f.id; conditionPageSearch[`${item.id}_${li}`] = ''; item.condition = serializeConditionLines(item.id); saveItem(item)"
+                          class="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 hover:bg-violet-50"
+                        >
+                          <span class="flex-shrink-0 font-mono text-[10px] text-slate-500">{{ f.specId }}</span>
+                          <span class="min-w-0 flex-1 truncate text-xs text-slate-700">{{ f.title }}</span>
+                        </div>
+                        <div v-if="pagesForLine(item.id, li).length === 0" class="px-2.5 py-2 text-xs text-slate-400">No results</div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- spacer matches "+ Add" button height -->
+                  <div class="h-5"></div>
+                </div>
+
+                <!-- Mandatory -->
+                <div class="flex items-center justify-center pt-1.5">
+                  <input
+                    type="checkbox"
+                    v-model="item.mandatory"
+                    @change="saveItem(item)"
+                    class="h-4 w-4 cursor-pointer rounded border-slate-300 accent-violet-600"
+                  />
+                </div>
 
                 <button v-if="auth.isAdmin" @click="removeItem(item.id)" class="mt-1 flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
                   <TrashIcon class="h-4 w-4" />

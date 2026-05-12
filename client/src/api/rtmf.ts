@@ -12,8 +12,10 @@ import type {
   RtmfFrontendScenarioRow,
   RtmfFrontendScenarioRowInput,
   RtmfModule,
+  RtmfModulePhoto,
   RtmfSnapshotStatus,
   RtmfSubModule,
+  RtmfSubModulePhoto,
 } from "@/types";
 
 // ── Dashboard ──
@@ -122,6 +124,38 @@ export async function deleteRtmfSubModule(moduleId: number, id: number) {
   return apiRequest<{ data: { success: boolean } }>(`/api/rtmf-modules/${moduleId}/sub-modules/${id}`, {
     method: "DELETE",
   });
+}
+export async function reorderSubModules(moduleId: number, ids: number[]) {
+  return apiRequest<{ data: { success: boolean } }>(`/api/rtmf-modules/${moduleId}/sub-modules/reorder`, {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+// ── Module Photos ──
+export async function listModulePhotos(moduleId: number) {
+  return apiRequest<{ data: RtmfModulePhoto[] }>(`/api/rtmf-modules/${moduleId}/photos`);
+}
+export async function uploadModulePhoto(moduleId: number, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiRequest<{ data: RtmfModulePhoto }>(`/api/rtmf-modules/${moduleId}/photos`, { method: "POST", body: form });
+}
+export async function deleteModulePhoto(moduleId: number, photoId: number) {
+  return apiRequest<{ data: { success: boolean } }>(`/api/rtmf-modules/${moduleId}/photos/${photoId}`, { method: "DELETE" });
+}
+
+// ── Sub-module Photos ──
+export async function listSubModulePhotos(moduleId: number, subModuleId: number) {
+  return apiRequest<{ data: RtmfSubModulePhoto[] }>(`/api/rtmf-modules/${moduleId}/sub-modules/${subModuleId}/photos`);
+}
+export async function uploadSubModulePhoto(moduleId: number, subModuleId: number, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiRequest<{ data: RtmfSubModulePhoto }>(`/api/rtmf-modules/${moduleId}/sub-modules/${subModuleId}/photos`, { method: "POST", body: form });
+}
+export async function deleteSubModulePhoto(moduleId: number, subModuleId: number, photoId: number) {
+  return apiRequest<{ data: { success: boolean } }>(`/api/rtmf-modules/${moduleId}/sub-modules/${subModuleId}/photos/${photoId}`, { method: "DELETE" });
 }
 
 // ── Actors ──

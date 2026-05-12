@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ReorderRtmfSubModulesRequest;
 use App\Http\Requests\StoreRtmfSubModuleRequest;
 use App\Http\Requests\UpdateRtmfSubModuleRequest;
 use App\Http\Traits\ApiResponse;
@@ -31,7 +32,12 @@ class RtmfSubModuleController extends Controller
             return $this->sendError(404, 'NOT_FOUND', 'Module not found');
         }
 
-        $row = $module->subModules()->create($request->validated());
+        $data = $request->validated();
+        $data['sort_order'] = ($module->subModules()
+            ->where('parent_id', $data['parent_id'] ?? null)
+            ->max('sort_order') ?? 0) + 10;
+
+        $row = $module->subModules()->create($data);
 
         return $this->sendOk($row);
     }
@@ -55,6 +61,22 @@ class RtmfSubModuleController extends Controller
         $row->update($request->validated());
 
         return $this->sendOk($row);
+    }
+
+    public function reorder(ReorderRtmfSubModulesRequest $request, int $moduleId): JsonResponse
+    {
+        $module = RtmfModule::find($moduleId);
+        if (! $module) {
+            return $this->sendError(404, 'NOT_FOUND', 'Module not found');
+        }
+
+        foreach ($request->input('ids') as $index => $id) {
+            RtmfSubModule::where('module_id', $moduleId)
+                ->where('id', $id)
+                ->update(['sort_order' => ($index + 1) * 10]);
+        }
+
+        return $this->sendOk(['success' => true]);
     }
 
     public function destroy(int $moduleId, int $id): JsonResponse

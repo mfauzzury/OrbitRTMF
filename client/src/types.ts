@@ -14,6 +14,28 @@ export type RtmfSubModule = {
   updatedAt?: string;
 };
 
+export type RtmfSubModulePhoto = {
+  id: number;
+  rtmfSubModuleId: number;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  createdAt: string;
+};
+
+export type RtmfModulePhoto = {
+  id: number;
+  rtmfModuleId: number;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  createdAt: string;
+};
+
 export type RtmfModule = {
   id: number;
   code: string;
@@ -47,6 +69,8 @@ export type RtmfFrontendItem = {
   type: string | null;
   label: string | null;
   condition: string | null;
+  validation: string | null;
+  mandatory: boolean;
   screenName: string | null;
   tableFieldname: string | null;
   status: RtmfFrontendItemStatus | null;

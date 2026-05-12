@@ -1,19 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { ChevronDown, ChevronRight, File, Folder, LayoutGrid, Pencil, Plus, Save, Trash2, X } from "lucide-vue-next";
+import { ChevronDown, ChevronRight, Eye, File, Folder, GripVertical, ImagePlus, LayoutGrid, Pencil, Plus, Save, Trash2, X } from "lucide-vue-next";
 import AdminLayout from "@/layouts/AdminLayout.vue";
 import {
   createRtmfModule,
   createRtmfSubModule,
+  deleteModulePhoto,
   deleteRtmfModule,
   deleteRtmfSubModule,
+  deleteSubModulePhoto,
   getRtmfModule,
+  listModulePhotos,
   listRtmfSubModules,
+  listSubModulePhotos,
+  reorderSubModules,
   updateRtmfModule,
   updateRtmfSubModule,
+  uploadModulePhoto,
+  uploadSubModulePhoto,
 } from "@/api/rtmf";
-import type { RtmfSubModule } from "@/types";
+import type { RtmfModulePhoto, RtmfSubModule, RtmfSubModulePhoto } from "@/types";
 import { useConfirmDialog } from "@/composables/useConfirmDialog";
 import { useToast } from "@/composables/useToast";
 
@@ -35,12 +42,26 @@ const frontendsCount = ref(0);
 const subModules = ref<RtmfSubModule[]>([]);
 const editingId = ref<number | null>(null); // null=none, 0=new row, >0=editing
 const expandedIds = ref<number[]>([]); // plain array — reliable Vue 3 reactivity
+// module-level photos
+const modulePhotos = ref<RtmfModulePhoto[]>([]);
+const modulePhotoUploading = ref(false);
+const modulePhotoInputRef = ref<HTMLInputElement | null>(null);
+
+// sub-module photos
+const subPhotos = ref<RtmfSubModulePhoto[]>([]);
+const photoUploading = ref(false);
+const photoInputRef = ref<HTMLInputElement | null>(null);
+
+type ModalPhoto = { url: string; originalName: string };
+const modalPhoto = ref<ModalPhoto | null>(null);
+
+const dragSourceId = ref<number | null>(null);
+const dragOverId = ref<number | null>(null);
 
 const draft = reactive({
   code: "",
   name: "",
   description: "",
-  sortOrder: 0,
   parentId: null as number | null,
 });
 
@@ -108,7 +129,6 @@ function resetDraft(seed?: Partial<RtmfSubModule> & { parentId?: number | null }
   draft.code = seed?.code ?? "";
   draft.name = seed?.name ?? "";
   draft.description = seed?.description ?? "";
-  draft.sortOrder = seed?.sortOrder ?? 0;
   draft.parentId = seed?.parentId ?? null;
 }
 
@@ -124,7 +144,8 @@ async function loadSubModules() {
 
 function startAdd(parentId: number | null = null) {
   editingId.value = 0;
-  resetDraft({ sortOrder: (subModules.value.length + 1) * 10, parentId });
+  resetDraft({ parentId });
+  subPhotos.value = [];
   if (parentId !== null && !expandedIds.value.includes(parentId)) {
     expandedIds.value = [...expandedIds.value, parentId];
   }
@@ -133,11 +154,116 @@ function startAdd(parentId: number | null = null) {
 function startEdit(sub: RtmfSubModule) {
   editingId.value = sub.id;
   resetDraft({ ...sub, parentId: sub.parentId ?? null });
+  loadSubPhotos(sub.id);
 }
 
 function cancelEdit() {
   editingId.value = null;
   resetDraft();
+  subPhotos.value = [];
+}
+
+async function loadSubPhotos(subId: number) {
+  const r = await listSubModulePhotos(id.value, subId);
+  subPhotos.value = r.data;
+}
+
+async function uploadPhotos(event: Event) {
+  if (!editingId.value) return;
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  if (!files.length) return;
+  photoUploading.value = true;
+  try {
+    for (const file of files) {
+      await uploadSubModulePhoto(id.value, editingId.value, file);
+    }
+    await loadSubPhotos(editingId.value);
+  } catch (e) {
+    toast.error("Upload failed", e instanceof Error ? e.message : "");
+  } finally {
+    photoUploading.value = false;
+    input.value = "";
+  }
+}
+
+async function removePhoto(photoId: number) {
+  if (!editingId.value) return;
+  try {
+    await deleteSubModulePhoto(id.value, editingId.value, photoId);
+    await loadSubPhotos(editingId.value);
+  } catch (e) {
+    toast.error("Delete failed", e instanceof Error ? e.message : "");
+  }
+}
+
+function openPhotoModal(photo: RtmfSubModulePhoto) {
+  modalPhoto.value = photo;
+}
+
+function closeModal() {
+  modalPhoto.value = null;
+}
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape") closeModal();
+}
+
+// ── Drag-to-reorder ──
+function onDragStart(_event: DragEvent, nodeId: number) {
+  dragSourceId.value = nodeId;
+}
+
+function onDragOver(event: DragEvent, nodeId: number) {
+  event.preventDefault();
+  if (!dragSourceId.value || dragSourceId.value === nodeId) return;
+  const source = subModules.value.find(s => s.id === dragSourceId.value);
+  const target = subModules.value.find(s => s.id === nodeId);
+  if (source && target && (source.parentId ?? null) === (target.parentId ?? null)) {
+    dragOverId.value = nodeId;
+  } else {
+    dragOverId.value = null;
+  }
+}
+
+function onDragLeave() {
+  dragOverId.value = null;
+}
+
+function onDragEnd() {
+  dragSourceId.value = null;
+  dragOverId.value = null;
+}
+
+async function onDrop(event: DragEvent, targetNode: RtmfSubModule) {
+  event.preventDefault();
+  const sourceId = dragSourceId.value;
+  dragSourceId.value = null;
+  dragOverId.value = null;
+
+  if (!sourceId || sourceId === targetNode.id) return;
+
+  const source = subModules.value.find(s => s.id === sourceId);
+  if (!source || (source.parentId ?? null) !== (targetNode.parentId ?? null)) return;
+
+  const siblings = subModules.value
+    .filter(s => (s.parentId ?? null) === (source.parentId ?? null))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+  const withoutSource = siblings.filter(s => s.id !== sourceId);
+  const targetIdx = withoutSource.findIndex(s => s.id === targetNode.id);
+  const newOrder = [
+    ...withoutSource.slice(0, targetIdx),
+    source,
+    ...withoutSource.slice(targetIdx),
+  ];
+
+  try {
+    await reorderSubModules(id.value, newOrder.map(s => s.id));
+    await loadSubModules();
+  } catch (e) {
+    toast.error("Reorder failed", e instanceof Error ? e.message : "");
+  }
 }
 
 async function saveSub() {
@@ -149,7 +275,6 @@ async function saveSub() {
     code: draft.code.trim(),
     name: draft.name.trim(),
     description: draft.description.trim() || null,
-    sort_order: draft.sortOrder,
     parent_id: draft.parentId,
   };
   if (!payload.code || !payload.name) {
@@ -158,14 +283,18 @@ async function saveSub() {
   }
   try {
     if (editingId.value === 0) {
-      await createRtmfSubModule(id.value, payload);
-      toast.success("Sub-module added");
+      const r = await createRtmfSubModule(id.value, payload);
+      toast.success("Sub-module added — you can now attach photos below.");
+      await loadSubModules();
+      editingId.value = r.data.id;
+      resetDraft({ ...r.data, parentId: r.data.parentId ?? null });
+      await loadSubPhotos(r.data.id);
     } else if (editingId.value) {
       await updateRtmfSubModule(id.value, editingId.value, payload);
       toast.success("Sub-module updated");
+      cancelEdit();
+      await loadSubModules();
     }
-    cancelEdit();
-    await loadSubModules();
   } catch (e) {
     toast.error("Save failed", e instanceof Error ? e.message : "");
   }
@@ -201,7 +330,40 @@ async function load() {
   description.value = r.data.description || "";
   sortOrder.value = (d.sort_order as number) ?? 0;
   frontendsCount.value = (d.frontends_count as number) ?? 0;
-  await loadSubModules(); // uses dedicated endpoint — avoids snake_case mismatch
+  await Promise.all([loadSubModules(), loadModulePhotos()]);
+}
+
+async function loadModulePhotos() {
+  if (!isEdit.value) return;
+  const r = await listModulePhotos(id.value);
+  modulePhotos.value = r.data;
+}
+
+async function uploadModulePhotos(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  if (!files.length) return;
+  modulePhotoUploading.value = true;
+  try {
+    for (const file of files) {
+      await uploadModulePhoto(id.value, file);
+    }
+    await loadModulePhotos();
+  } catch (e) {
+    toast.error("Upload failed", e instanceof Error ? e.message : "");
+  } finally {
+    modulePhotoUploading.value = false;
+    input.value = "";
+  }
+}
+
+async function removeModulePhoto(photoId: number) {
+  try {
+    await deleteModulePhoto(id.value, photoId);
+    await loadModulePhotos();
+  } catch (e) {
+    toast.error("Delete failed", e instanceof Error ? e.message : "");
+  }
 }
 
 async function save() {
@@ -244,7 +406,14 @@ async function remove() {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  window.addEventListener("keydown", onKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("keydown", onKeydown);
+});
 </script>
 
 <template>
@@ -282,6 +451,55 @@ onMounted(load);
             <textarea v-model="description" rows="3" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200" />
           </div>
         </div>
+
+        <!-- Module reference photos (edit mode only) -->
+        <div v-if="isEdit" class="border-t border-slate-100 px-4 py-3">
+          <p class="mb-2 text-xs font-medium text-slate-600">Reference Photos</p>
+          <div class="flex flex-wrap gap-2">
+            <div
+              v-for="photo in modulePhotos"
+              :key="photo.id"
+              class="group relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100"
+            >
+              <img
+                :src="photo.url"
+                :alt="photo.originalName"
+                class="h-full w-full cursor-pointer object-cover"
+                @click="openPhotoModal(photo)"
+              />
+              <div class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
+                <Eye class="h-5 w-5 text-white drop-shadow" />
+              </div>
+              <button
+                type="button"
+                class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-600"
+                title="Delete photo"
+                @click.stop="removeModulePhoto(photo.id)"
+              >
+                <Trash2 class="h-3 w-3 text-white" />
+              </button>
+            </div>
+
+            <!-- Add button -->
+            <button
+              type="button"
+              class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-md border border-dashed border-slate-300 text-slate-400 hover:border-violet-400 hover:text-violet-500 disabled:opacity-50"
+              :disabled="modulePhotoUploading"
+              @click="modulePhotoInputRef?.click()"
+            >
+              <ImagePlus v-if="!modulePhotoUploading" class="h-5 w-5" />
+              <span v-else class="text-xs">…</span>
+            </button>
+            <input
+              ref="modulePhotoInputRef"
+              type="file"
+              accept="image/*"
+              multiple
+              class="hidden"
+              @change="uploadModulePhotos"
+            />
+          </div>
+        </div>
       </article>
 
       <!-- Sub-modules tree -->
@@ -306,8 +524,18 @@ onMounted(load);
           <div
             v-for="item in treeDisplayItems"
             :key="item.node.id"
+            draggable="true"
             class="group flex items-stretch transition-colors hover:bg-slate-50"
-            :class="{ 'bg-violet-50/60 hover:bg-violet-50/60': editingId === item.node.id }"
+            :class="{
+              'bg-violet-50/60 hover:bg-violet-50/60': editingId === item.node.id,
+              'opacity-40': dragSourceId === item.node.id,
+              'border-t-2 border-violet-400': dragOverId === item.node.id,
+            }"
+            @dragstart="onDragStart($event, item.node.id)"
+            @dragover="onDragOver($event, item.node.id)"
+            @dragleave="onDragLeave"
+            @dragend="onDragEnd"
+            @drop="onDrop($event, item.node)"
           >
             <!-- Base left spacer -->
             <div class="w-3 flex-shrink-0" />
@@ -337,6 +565,8 @@ onMounted(load);
 
             <!-- Row content -->
             <div class="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pr-3">
+              <!-- Drag handle -->
+              <GripVertical class="h-3.5 w-3.5 flex-shrink-0 cursor-grab text-slate-300 opacity-0 group-hover:opacity-100 active:cursor-grabbing" />
               <!-- Expand/collapse toggle -->
               <button
                 v-if="item.node.children.length > 0"
@@ -432,22 +662,68 @@ onMounted(load);
                 placeholder="Nama sub-modul"
               />
             </div>
-            <div class="space-y-1">
+            <div class="space-y-1 md:col-span-2">
               <label class="text-xs font-medium text-slate-600">Description</label>
               <input
                 v-model="draft.description"
                 class="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
               />
             </div>
-            <div class="space-y-1">
-              <label class="text-xs font-medium text-slate-600">Sort Order</label>
+          </div>
+          <!-- Reference Photos -->
+          <div class="mt-3 border-t border-violet-100 pt-3">
+            <p class="mb-2 text-xs font-medium text-slate-600">Reference Photos</p>
+            <p v-if="editingId === 0" class="text-xs italic text-slate-400">Save the sub-module first to attach photos.</p>
+            <div v-else>
+              <div v-if="subPhotos.length > 0" class="mb-2 flex flex-wrap gap-2">
+                <div
+                  v-for="photo in subPhotos"
+                  :key="photo.id"
+                  class="group relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100"
+                >
+                  <img
+                    :src="photo.url"
+                    :alt="photo.originalName"
+                    class="h-full w-full cursor-pointer object-cover"
+                    @click="openPhotoModal(photo)"
+                  />
+                  <!-- View overlay (centre, shows on hover) -->
+                  <div
+                    class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100"
+                  >
+                    <Eye class="h-5 w-5 text-white drop-shadow" />
+                  </div>
+                  <!-- Delete button (top-right corner) -->
+                  <button
+                    type="button"
+                    class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-600"
+                    title="Delete photo"
+                    @click.stop="removePhoto(photo.id)"
+                  >
+                    <Trash2 class="h-3 w-3 text-white" />
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="flex items-center gap-1.5 rounded-md border border-dashed border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:border-violet-400 hover:text-violet-600 disabled:opacity-50"
+                :disabled="photoUploading"
+                @click="photoInputRef?.click()"
+              >
+                <ImagePlus class="h-3.5 w-3.5" />
+                {{ photoUploading ? 'Uploading…' : 'Add Photo' }}
+              </button>
               <input
-                v-model.number="draft.sortOrder"
-                type="number"
-                class="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                ref="photoInputRef"
+                type="file"
+                accept="image/*"
+                multiple
+                class="hidden"
+                @change="uploadPhotos"
               />
             </div>
           </div>
+
           <div class="mt-3 flex items-center gap-2">
             <button
               class="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800"
@@ -478,5 +754,30 @@ onMounted(load);
         </button>
       </div>
     </div>
+
+    <!-- Photo modal -->
+    <Teleport to="body">
+      <div
+        v-if="modalPhoto"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+        @click.self="closeModal"
+      >
+        <div class="relative flex max-h-full max-w-full flex-col items-center">
+          <img
+            :src="modalPhoto.url"
+            :alt="modalPhoto.originalName"
+            class="max-h-[80vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+          />
+          <p class="mt-3 text-sm text-slate-300">{{ modalPhoto.originalName }}</p>
+          <button
+            type="button"
+            class="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+            @click="closeModal"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </AdminLayout>
 </template>

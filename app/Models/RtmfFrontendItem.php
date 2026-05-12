@@ -15,6 +15,8 @@ class RtmfFrontendItem extends Model
         'type',
         'label',
         'condition',
+        'validation',
+        'mandatory',
         'screen_name',
         'table_fieldname',
         'status',
@@ -23,7 +25,10 @@ class RtmfFrontendItem extends Model
 
     protected function casts(): array
     {
-        return ['sort_order' => 'integer'];
+        return [
+            'sort_order' => 'integer',
+            'mandatory'  => 'boolean',
+        ];
     }
 
     public function frontend(): BelongsTo
