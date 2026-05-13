@@ -40,10 +40,11 @@ RUN apt-get update \
         zip \
         unzip \
         libpq-dev \
+        default-libmysqlclient-dev \
         libicu-dev \
         libzip-dev \
     && docker-php-ext-configure intl \
-    && docker-php-ext-install -j"$(nproc)" intl pdo_pgsql opcache pcntl bcmath zip \
+    && docker-php-ext-install -j"$(nproc)" intl pdo_pgsql pdo_mysql opcache pcntl bcmath zip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
