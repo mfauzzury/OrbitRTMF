@@ -129,10 +129,7 @@ function cancelEdit() {
             <ScrollText class="h-3.5 w-3.5 text-violet-600" />
             <h2 class="text-xs font-semibold text-slate-900">{{ release.version }}</h2>
           </div>
-          <div
-            class="prose prose-sm max-w-none p-4 text-xs text-slate-700 [&_h1]:text-sm [&_h2]:text-xs [&_h3]:text-xs [&_h4]:text-xs"
-            v-html="release.html"
-          />
+          <div class="changelog-body px-4 pb-4 pt-2" v-html="release.html" />
         </article>
       </template>
 
@@ -141,3 +138,48 @@ function cancelEdit() {
     </div>
   </AdminLayout>
 </template>
+
+<style scoped>
+.changelog-body :deep(h3) {
+  margin-top: 0.75rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgb(51 65 85);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.changelog-body :deep(ul),
+.changelog-body :deep(ol) {
+  margin: 0.25rem 0 0.5rem 0;
+  padding-left: 1.25rem;
+  list-style-type: disc;
+}
+.changelog-body :deep(ol) {
+  list-style-type: decimal;
+}
+.changelog-body :deep(li) {
+  font-size: 0.75rem;
+  color: rgb(71 85 105);
+  line-height: 1.6;
+  margin-bottom: 0.2rem;
+}
+.changelog-body :deep(strong) {
+  font-weight: 600;
+  color: rgb(30 41 59);
+}
+.changelog-body :deep(code) {
+  font-size: 0.7rem;
+  background: rgb(241 245 249);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+}
+.changelog-body :deep(p) {
+  font-size: 0.75rem;
+  color: rgb(71 85 105);
+  margin: 0.25rem 0;
+}
+.changelog-body :deep(hr) {
+  display: none;
+}
+</style>

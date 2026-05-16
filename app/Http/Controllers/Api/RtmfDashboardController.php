@@ -85,7 +85,8 @@ class RtmfDashboardController extends Controller
             $modulesQuery->whereIn('id', $moduleIds);
         }
 
-        $byModule = $modulesQuery->get()->map(function ($module) use ($frontendStats, $itemStats) {
+        $modules  = $modulesQuery->get();
+        $byModule = $modules->map(function ($module) use ($frontendStats, $itemStats) {
             $fs = $frontendStats->get($module->id);
             $is = $itemStats->get($module->id);
 
@@ -138,6 +139,35 @@ class RtmfDashboardController extends Controller
             ];
         }
 
+        // ── Per-module feedback breakdown per role (drill-down) ─────────────
+        $moduleRoleFeedback = RtmfFrontendFeedback::select(
+            'rtmf_frontends.module_id',
+            'rtmf_frontend_feedbacks.role',
+            'rtmf_frontend_feedbacks.status',
+            DB::raw('count(*) as total')
+        )
+            ->join('rtmf_frontends', 'rtmf_frontend_feedbacks.rtmf_frontend_id', '=', 'rtmf_frontends.id')
+            ->whereIn('rtmf_frontend_feedbacks.rtmf_frontend_id', $frontendIds)
+            ->groupBy('rtmf_frontends.module_id', 'rtmf_frontend_feedbacks.role', 'rtmf_frontend_feedbacks.status')
+            ->get();
+
+        $byRoleModule = [];
+        foreach ($roles as $role) {
+            $byRoleModule[$role] = $modules->map(function ($module) use ($moduleRoleFeedback, $role, $frontendStats) {
+                $rows  = $moduleRoleFeedback->where('module_id', $module->id)->where('role', $role);
+                $total = (int) ($frontendStats->get($module->id)?->frontends_count ?? 0);
+                return [
+                    'id'       => $module->id,
+                    'code'     => $module->code,
+                    'name'     => $module->name,
+                    'total'    => $total,
+                    'approved' => (int) ($rows->where('status', 'approved')->first()?->total ?? 0),
+                    'reviewed' => (int) ($rows->where('status', 'reviewed')->first()?->total ?? 0),
+                    'open'     => (int) ($rows->where('status', 'open')->first()?->total ?? 0),
+                ];
+            })->filter(fn ($m) => $m['total'] > 0)->values();
+        }
+
         // Pages with all 3 roles approved — single aggregation query
         $approvedAll = DB::table('rtmf_frontend_feedbacks')
             ->selectRaw('rtmf_frontend_id')
@@ -163,6 +193,7 @@ class RtmfDashboardController extends Controller
             'byModule'      => $byModule,
             'byActor'       => $byActor,
             'byReview'      => $byReview,
+            'byRoleModule'  => $byRoleModule,
         ]);
     }
 }

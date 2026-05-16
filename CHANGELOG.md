@@ -9,6 +9,11 @@ All notable changes to this project are documented in this file.
 - Redesign topbar with a darker "PowerBar" concept.
 - Build notification module and add topbar notifications dropdown (similar to settings) showing the latest 5 notifications.
 
+## [1.2.1] - 2026-05-16
+
+### Added
+- Page Catalog Tracking view (`/admin/catalog-tracking`) — mirrors the RTMF Dashboard with full KPI, module breakdown, review status cards, and role drill-down.
+
 ## [1.2.0] - 2026-03-22
 
 ### Upgraded

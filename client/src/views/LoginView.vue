@@ -105,7 +105,7 @@ async function submit() {
       </div>
 
       <!-- Footer -->
-      <p class="mt-8 text-center text-[12px] text-[#8792a2]">&copy; {{ new Date().getFullYear() }} {{ site.siteTitle || 'Admin' }}</p>
+      <p class="mt-8 text-center text-[12px] text-[#8792a2]">{{ site.footerText || `© ${new Date().getFullYear()} ${site.siteTitle || 'Admin'}` }}</p>
     </div>
   </div>
 </template>

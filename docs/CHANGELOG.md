@@ -1,5 +1,28 @@
 # Changelog
 
+## [2026-05-16] — UI Bug Fixes, Pagination, Dropdown Overlap, Dashboard Scenarios
+
+### Fixed
+- **Page list search** — fixed search input next to the filter not working correctly
+- **Webfront footer** — now reads footer text from admin Settings (DB value) instead of a hardcoded fallback; login page footer follows the same source
+- **Pagination not working on server** — `totalPages` was previously computed client-side; now taken from server `meta.totalPages` so it is always accurate regardless of environment
+- **Table shaking on pagination** — added `min-height: 400px` to the `table-container` utility class so the table wrapper keeps its size while rows load
+- **Title column overflow** — page catalog list title column now truncates to a single line with ellipsis (`max-w-[260px] truncate`) instead of wrapping
+- **Row vertical alignment** — changed table row alignment from `align-top` to `align-middle` for cleaner look
+- **Link / page search dropdowns overlapping rows** — From/Go-To link search and condition page search dropdowns in the Page Catalog editor now teleport to `<body>` and use `position: fixed` with viewport coordinates; they reposition correctly when the user scrolls
+- **All-frontends search limited to 500 on server** — replaced single `limit=500` request with a paginated loop (200 per page, up to 50 pages) that collects all pages; link search now finds all pages in a project regardless of server configuration
+
+### Added
+- **Scenarios KPI card** on the RTMF Dashboard — shows total scenario count alongside Pages, Modules, Actors, and Items
+- **Items per module** breakdown in the Dashboard "By Module" table — each module row now shows `implementedCount / itemsCount` items alongside pages-done count
+- **Loading state on pagination buttons** — Previous/Next disabled while a page is fetching; table dims to 60% opacity during load
+- **Toast error on load failure** — pagination load errors now surface a toast instead of silently failing
+
+### Changed
+- `table-container` CSS utility class added globally in `style.css` — replaces inline `overflow-x-auto` + inline `min-height` style across views
+
+---
+
 ## [2026-05-15] — Full Page Catalog Seeding (521 pages), Actor System Overhaul
 
 ### Added

@@ -146,6 +146,16 @@ export type RtmfReviewRoleStat = {
   open: number;
 };
 
+export type RtmfRoleModuleStat = {
+  id: number;
+  code: string;
+  name: string;
+  total: number;
+  approved: number;
+  reviewed: number;
+  open: number;
+};
+
 export type RtmfDashboardSummary = {
   totals: {
     frontends: number;
@@ -169,6 +179,12 @@ export type RtmfDashboardSummary = {
     qa: RtmfReviewRoleStat;
     technical: RtmfReviewRoleStat;
     developer: RtmfReviewRoleStat;
+  };
+  byRoleModule: {
+    businessAnalyst: RtmfRoleModuleStat[];
+    qa: RtmfRoleModuleStat[];
+    technical: RtmfRoleModuleStat[];
+    developer: RtmfRoleModuleStat[];
   };
 };
 

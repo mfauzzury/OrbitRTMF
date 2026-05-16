@@ -140,7 +140,7 @@ const menuTree = computed(() => {
 
     <footer class="border-t border-slate-200 bg-white">
       <div class="mx-auto w-full max-w-4xl px-4 py-4 text-sm text-slate-500">
-        {{ site?.footerText || "Powered by CORRAD+ CMS" }}
+        {{ site?.footerText }}
       </div>
     </footer>
   </div>

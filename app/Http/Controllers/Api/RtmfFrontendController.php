@@ -68,9 +68,9 @@ class RtmfFrontendController extends Controller
 
         if ($q) {
             $query->where(function ($b) use ($q) {
-                $b->where('spec_id', 'like', "%{$q}%")
-                    ->orWhere('title', 'like', "%{$q}%")
-                    ->orWhere('business_requirement', 'like', "%{$q}%");
+                $b->whereRaw('spec_id ilike ?', ["%{$q}%"])
+                    ->orWhereRaw('title ilike ?', ["%{$q}%"])
+                    ->orWhereRaw('business_requirement ilike ?', ["%{$q}%"]);
             });
         }
 

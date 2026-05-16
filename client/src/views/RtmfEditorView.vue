@@ -102,6 +102,53 @@ const toLinks = ref<PageLinkRow[]>([]);
 const allFrontends = ref<RtmfFrontend[]>([]);
 const linksLoading = ref(true);
 
+type LinkDropdown = { type: 'from' | 'to'; index: number; x: number; y: number; width: number; el: HTMLElement } | null;
+const linkDropdown = ref<LinkDropdown>(null);
+
+function updateLinkDropdownPos() {
+  if (!linkDropdown.value) return;
+  const rect = linkDropdown.value.el.getBoundingClientRect();
+  linkDropdown.value.x = rect.left;
+  linkDropdown.value.y = rect.bottom;
+  linkDropdown.value.width = rect.width;
+}
+
+function openLinkDropdown(e: Event, type: 'from' | 'to', index: number) {
+  const el = (e.target as HTMLElement).closest('.link-search-anchor') as HTMLElement;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  linkDropdown.value = { type, index, x: rect.left, y: rect.bottom, width: rect.width, el };
+  window.addEventListener('scroll', updateLinkDropdownPos, true);
+}
+
+function closeLinkDropdown() {
+  window.removeEventListener('scroll', updateLinkDropdownPos, true);
+  linkDropdown.value = null;
+}
+
+type CondDropdown = { itemId: number; li: number; x: number; y: number; width: number; el: HTMLElement } | null;
+const condDropdown = ref<CondDropdown>(null);
+
+function updateCondDropdownPos() {
+  if (!condDropdown.value) return;
+  const rect = condDropdown.value.el.getBoundingClientRect();
+  condDropdown.value.x = rect.left;
+  condDropdown.value.y = rect.bottom;
+  condDropdown.value.width = rect.width;
+}
+
+function openCondDropdown(e: Event, itemId: number, li: number) {
+  const el = e.target as HTMLElement;
+  const rect = el.getBoundingClientRect();
+  condDropdown.value = { itemId, li, x: rect.left, y: rect.bottom, width: rect.width, el };
+  window.addEventListener('scroll', updateCondDropdownPos, true);
+}
+
+function closeCondDropdown() {
+  window.removeEventListener('scroll', updateCondDropdownPos, true);
+  condDropdown.value = null;
+}
+
 const fromIds = computed(() => fromLinks.value.filter((l) => l.id !== null).map((l) => l.id as number));
 const toIds = computed(() => toLinks.value.filter((l) => l.id !== null).map((l) => l.id as number));
 
@@ -257,8 +304,23 @@ async function loadRefData() {
 async function loadAllFrontends() {
   linksLoading.value = true;
   try {
-    const res = await listRtmfFrontends("?limit=500&sort_by=spec_id&sort_dir=asc");
-    allFrontends.value = res.data ?? [];
+    const pid = projectStore.activeProjectId;
+    const pidParam = pid ? `&project_id=${pid}` : "";
+    const PAGE_SIZE = 200;
+    const MAX_PAGES = 50; // safety cap: 50 × 200 = 10,000 items
+    let page = 1;
+    let collected: RtmfFrontend[] = [];
+    while (page <= MAX_PAGES) {
+      const res = await listRtmfFrontends(`?limit=${PAGE_SIZE}&page=${page}&sort_by=spec_id&sort_dir=asc${pidParam}`);
+      const rows = res.data ?? [];
+      collected = collected.concat(rows);
+      const total = (res.meta?.total as number) ?? 0;
+      const totalPages = (res.meta?.totalPages as number) ?? 1;
+      // stop if we've fetched all pages, got an empty page, or meta is missing
+      if (page >= totalPages || rows.length === 0 || collected.length >= total) break;
+      page++;
+    }
+    allFrontends.value = collected;
   } catch {
     allFrontends.value = [];
   } finally {
@@ -894,30 +956,23 @@ onMounted(async () => {
                 :key="`from-${i}`"
                 class="grid min-w-[480px] grid-cols-[1fr_1fr_32px] items-center gap-2 px-4 py-2"
               >
-                <div class="relative">
+                <div>
                   <div v-if="row.id !== null" class="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
                     <a :href="`/admin/rtmf/frontends/${row.id}`" target="_blank" class="flex-1 truncate font-mono text-xs font-medium text-violet-700 hover:underline">{{ frontendById(row.id)?.specId ?? row.id }}</a>
                     <button type="button" @click="row.id = null; row.search = ''" class="shrink-0 text-slate-400 hover:text-slate-600"><X class="h-3 w-3" /></button>
                   </div>
-                  <template v-else>
-                    <div class="flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
-                      <Search class="h-3 w-3 shrink-0 text-slate-400" />
-                      <input v-model="row.search" class="w-full bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none" placeholder="Search page…" autocomplete="off" />
-                    </div>
-                    <div v-if="row.search" class="absolute left-0 right-0 z-20 mt-1 max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-md">
-                      <button
-                        v-for="f in fromAvailable(null, row.search)"
-                        :key="f.id"
-                        type="button"
-                        @click="row.id = f.id; row.search = ''"
-                        class="block w-full px-2.5 py-2 text-left hover:bg-violet-50"
-                      >
-                        <span class="block truncate font-mono text-xs font-medium text-slate-800">{{ f.specId }}</span>
-                        <span class="block truncate text-xs text-slate-400">{{ f.title }}</span>
-                      </button>
-                      <p v-if="!fromAvailable(null, row.search).length" class="px-2.5 py-2 text-xs text-slate-400">No match.</p>
-                    </div>
-                  </template>
+                  <div v-else class="link-search-anchor flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
+                    <Search class="h-3 w-3 shrink-0 text-slate-400" />
+                    <input
+                      v-model="row.search"
+                      class="w-full bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none"
+                      placeholder="Search page…"
+                      autocomplete="off"
+                      @input="openLinkDropdown($event, 'from', i)"
+                      @focus="openLinkDropdown($event, 'from', i)"
+                      @blur="setTimeout(closeLinkDropdown, 150)"
+                    />
+                  </div>
                 </div>
                 <input
                   v-model="row.note"
@@ -949,30 +1004,23 @@ onMounted(async () => {
                 :key="`to-${i}`"
                 class="grid min-w-[480px] grid-cols-[1fr_1fr_32px] items-center gap-2 px-4 py-2"
               >
-                <div class="relative">
+                <div>
                   <div v-if="row.id !== null" class="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
                     <a :href="`/admin/rtmf/frontends/${row.id}`" target="_blank" class="flex-1 truncate font-mono text-xs font-medium text-teal-700 hover:underline">{{ frontendById(row.id)?.specId ?? row.id }}</a>
                     <button type="button" @click="row.id = null; row.search = ''" class="shrink-0 text-slate-400 hover:text-slate-600"><X class="h-3 w-3" /></button>
                   </div>
-                  <template v-else>
-                    <div class="flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
-                      <Search class="h-3 w-3 shrink-0 text-slate-400" />
-                      <input v-model="row.search" class="w-full bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none" placeholder="Search page…" autocomplete="off" />
-                    </div>
-                    <div v-if="row.search" class="absolute left-0 right-0 z-20 mt-1 max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-md">
-                      <button
-                        v-for="f in toAvailable(null, row.search)"
-                        :key="f.id"
-                        type="button"
-                        @click="row.id = f.id; row.search = ''"
-                        class="block w-full px-2.5 py-2 text-left hover:bg-teal-50"
-                      >
-                        <span class="block truncate font-mono text-xs font-medium text-slate-800">{{ f.specId }}</span>
-                        <span class="block truncate text-xs text-slate-400">{{ f.title }}</span>
-                      </button>
-                      <p v-if="!toAvailable(null, row.search).length" class="px-2.5 py-2 text-xs text-slate-400">No match.</p>
-                    </div>
-                  </template>
+                  <div v-else class="link-search-anchor flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
+                    <Search class="h-3 w-3 shrink-0 text-slate-400" />
+                    <input
+                      v-model="row.search"
+                      class="w-full bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none"
+                      placeholder="Search page…"
+                      autocomplete="off"
+                      @input="openLinkDropdown($event, 'to', i)"
+                      @focus="openLinkDropdown($event, 'to', i)"
+                      @blur="setTimeout(closeLinkDropdown, 150)"
+                    />
+                  </div>
                 </div>
                 <input
                   v-model="row.note"
@@ -1463,28 +1511,15 @@ onMounted(async () => {
                       ><X class="h-3.5 w-3.5" /></button>
                     </div>
                     <!-- Search -->
-                    <div v-else class="relative h-8">
+                    <div v-else class="h-8">
                       <input
                         v-model="conditionPageSearch[`${item.id}_${li}`]"
                         class="h-8 w-full rounded-md border border-slate-200 px-2 py-0 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
                         placeholder="Search page…"
+                        @input="openCondDropdown($event, item.id, li)"
+                        @focus="openCondDropdown($event, item.id, li)"
+                        @blur="setTimeout(closeCondDropdown, 150)"
                       />
-                      <div
-                        v-if="(conditionPageSearch[`${item.id}_${li}`] ?? '').trim()"
-                        class="absolute left-0 top-full z-20 mt-0.5 max-h-40 w-64 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
-                      >
-                        <div
-                          v-for="f in pagesForLine(item.id, li)"
-                          :key="f.id"
-                          :title="f.title ?? ''"
-                          @mousedown.prevent="conditionLines[item.id][li].p = f.id; conditionPageSearch[`${item.id}_${li}`] = ''; item.condition = serializeConditionLines(item.id); saveItem(item)"
-                          class="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 hover:bg-violet-50"
-                        >
-                          <span class="flex-shrink-0 font-mono text-[10px] text-slate-500">{{ f.specId }}</span>
-                          <span class="min-w-0 flex-1 truncate text-xs text-slate-700">{{ f.title }}</span>
-                        </div>
-                        <div v-if="pagesForLine(item.id, li).length === 0" class="px-2.5 py-2 text-xs text-slate-400">No results</div>
-                      </div>
                     </div>
                   </div>
                   <!-- spacer matches "+ Add" button height -->
@@ -1882,6 +1917,65 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+    </div>
+  </Teleport>
+
+  <!-- Condition page search dropdown — teleported to body to escape stacking contexts -->
+  <Teleport to="body">
+    <div
+      v-if="condDropdown && (conditionPageSearch[`${condDropdown.itemId}_${condDropdown.li}`] ?? '').trim()"
+      class="fixed z-[9999] max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
+      :style="{ top: `${condDropdown.y + 2}px`, left: `${condDropdown.x}px`, width: `${Math.max(condDropdown.width, 256)}px` }"
+      @mousedown.prevent
+    >
+      <div
+        v-for="f in pagesForLine(condDropdown.itemId, condDropdown.li)"
+        :key="f.id"
+        :title="f.title ?? ''"
+        @mousedown.prevent="conditionLines[condDropdown.itemId][condDropdown.li].p = f.id; conditionPageSearch[`${condDropdown.itemId}_${condDropdown.li}`] = ''; closeCondDropdown()"
+        class="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 hover:bg-violet-50"
+      >
+        <span class="flex-shrink-0 font-mono text-[10px] text-slate-500">{{ f.specId }}</span>
+        <span class="min-w-0 flex-1 truncate text-xs text-slate-700">{{ f.title }}</span>
+      </div>
+      <div v-if="pagesForLine(condDropdown.itemId, condDropdown.li).length === 0" class="px-2.5 py-2 text-xs text-slate-400">No results</div>
+    </div>
+  </Teleport>
+
+  <!-- Link search dropdown — teleported to body to escape stacking contexts -->
+  <Teleport to="body">
+    <div
+      v-if="linkDropdown && (linkDropdown.type === 'from' ? fromLinks[linkDropdown.index]?.search : toLinks[linkDropdown.index]?.search)"
+      class="fixed z-[9999] max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
+      :style="{ top: `${linkDropdown.y + 2}px`, left: `${linkDropdown.x}px`, width: `${linkDropdown.width}px` }"
+      @mousedown.prevent
+    >
+      <template v-if="linkDropdown.type === 'from'">
+        <button
+          v-for="f in fromAvailable(null, fromLinks[linkDropdown.index]?.search ?? '')"
+          :key="f.id"
+          type="button"
+          @click="fromLinks[linkDropdown.index].id = f.id; fromLinks[linkDropdown.index].search = ''; closeLinkDropdown()"
+          class="block w-full px-2.5 py-2 text-left hover:bg-violet-50"
+        >
+          <span class="block truncate font-mono text-xs font-medium text-slate-800">{{ f.specId }}</span>
+          <span class="block truncate text-xs text-slate-400">{{ f.title }}</span>
+        </button>
+        <p v-if="!fromAvailable(null, fromLinks[linkDropdown.index]?.search ?? '').length" class="px-2.5 py-2 text-xs text-slate-400">No match.</p>
+      </template>
+      <template v-else>
+        <button
+          v-for="f in toAvailable(null, toLinks[linkDropdown.index]?.search ?? '')"
+          :key="f.id"
+          type="button"
+          @click="toLinks[linkDropdown.index].id = f.id; toLinks[linkDropdown.index].search = ''; closeLinkDropdown()"
+          class="block w-full px-2.5 py-2 text-left hover:bg-teal-50"
+        >
+          <span class="block truncate font-mono text-xs font-medium text-slate-800">{{ f.specId }}</span>
+          <span class="block truncate text-xs text-slate-400">{{ f.title }}</span>
+        </button>
+        <p v-if="!toAvailable(null, toLinks[linkDropdown.index]?.search ?? '').length" class="px-2.5 py-2 text-xs text-slate-400">No match.</p>
+      </template>
     </div>
   </Teleport>
 </template>

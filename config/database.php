@@ -59,6 +59,19 @@ return [
             'strict'    => false,
         ],
 
+        'mantis' => [
+            'driver'    => 'mysql',
+            'host'      => env('MANTIS_DB_HOST', '43.216.185.12'),
+            'port'      => env('MANTIS_DB_PORT', '3306'),
+            'database'  => env('MANTIS_DB_DATABASE', 'mantisbt_db'),
+            'username'  => env('MANTIS_DB_USERNAME', 'mantisbt_user'),
+            'password'  => env('MANTIS_DB_PASSWORD', 'XS@mantisbt2025'),
+            'charset'   => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix'    => '',
+            'strict'    => false,
+        ],
+
     ],
 
     /*

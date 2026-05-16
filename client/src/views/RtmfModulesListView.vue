@@ -56,7 +56,7 @@ onMounted(load);
         No modules yet.
       </div>
 
-      <div class="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+      <div class="grid auto-rows-min gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <article
           v-for="m in rows"
           :key="m.id"
@@ -76,11 +76,11 @@ onMounted(load);
           </div>
 
           <!-- Sub-modules list -->
-          <div class="flex-1 px-5 py-3">
+          <div class="px-5 py-3">
             <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
               Sub-modules <span class="ml-1 font-normal normal-case">{{ (subModulesMap[m.id] ?? []).length }}</span>
             </p>
-            <ul class="space-y-1.5">
+            <ul class="max-h-40 space-y-1.5 overflow-y-auto">
               <li
                 v-for="(sub, i) in (subModulesMap[m.id] ?? [])"
                 :key="sub.id"

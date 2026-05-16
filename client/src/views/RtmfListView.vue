@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { ChevronLeft, ChevronRight, GitMerge, LayoutGrid, Plus, Search } from "lucide-vue-next";
 
@@ -18,27 +18,36 @@ const projectStore = useRtmfProjectStore();
 const rows = ref<RtmfFrontend[]>([]);
 const modules = ref<RtmfModule[]>([]);
 const total = ref(0);
+const totalPages = ref(1);
 const page = ref(1);
 const limit = ref(25);
+const loading = ref(false);
 const PAGE_SIZES = [10, 25, 50, 100];
 const q = ref("");
 const moduleFilter = ref<number | "">("");
 const doneFilter = ref<"" | "1" | "0">("");
 
-const totalPages = computed(() => (total.value > 0 ? Math.ceil(total.value / limit.value) : 1));
 const rangeStart = computed(() => (total.value === 0 ? 0 : (page.value - 1) * limit.value + 1));
 const rangeEnd = computed(() => Math.min(page.value * limit.value, total.value));
 
 async function load() {
+  loading.value = true;
   const params = new URLSearchParams({ page: String(page.value), limit: String(limit.value) });
   if (q.value) params.set("q", q.value);
   if (moduleFilter.value) params.set("module_id", String(moduleFilter.value));
   if (doneFilter.value !== "") params.set("is_done", doneFilter.value);
   const pid = projectStore.activeProjectId;
   if (pid) params.set("project_id", String(pid));
-  const response = await listRtmfFrontends(`?${params.toString()}`);
-  rows.value = response.data;
-  total.value = Number(response.meta?.total ?? response.data.length);
+  try {
+    const response = await listRtmfFrontends(`?${params.toString()}`);
+    rows.value = response.data;
+    total.value = (response.meta?.total as number) ?? response.data.length;
+    totalPages.value = (response.meta?.totalPages as number) ?? (Math.ceil(total.value / limit.value) || 1);
+  } catch (e) {
+    toast.error("Failed to load", e instanceof Error ? e.message : "API error");
+  } finally {
+    loading.value = false;
+  }
 }
 
 function resetAndLoad() {
@@ -46,17 +55,23 @@ function resetAndLoad() {
   load();
 }
 
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(q, () => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(resetAndLoad, 350);
+});
+
 onMounted(async () => {
   try {
     const pid = projectStore.activeProjectId;
     const modParams = pid ? `?project_id=${pid}` : "";
     const modResp = await listRtmfModules(modParams);
     modules.value = modResp.data;
-    await load();
   } catch (e) {
-    toast.error("Failed to load", e instanceof Error ? e.message : "API error — check console");
+    toast.error("Failed to load modules", e instanceof Error ? e.message : "API error — check console");
     console.error("[RtmfListView]", e);
   }
+  await load();
 });
 
 // ── Page links popover ──
@@ -152,7 +167,7 @@ onUnmounted(() => document.removeEventListener("click", closePopover));
         </div>
 
         <!-- Table -->
-        <div class="overflow-x-auto">
+        <div class="table-container" :class="{ 'opacity-60 pointer-events-none': loading }">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-slate-100 text-left">
@@ -172,14 +187,14 @@ onUnmounted(() => document.removeEventListener("click", closePopover));
               <tr
                 v-for="item in rows"
                 :key="item.id"
-                class="cursor-pointer align-top transition-colors hover:bg-slate-50"
+                class="cursor-pointer align-middle transition-colors hover:bg-slate-50"
                 @click="router.push(`/admin/rtmf/frontends/${item.id}`)"
               >
                 <!-- ID_FR -->
                 <td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-700">{{ item.specId }}</td>
 
                 <!-- Title -->
-                <td class="max-w-[260px] px-3 py-2 text-sm font-medium text-slate-900">{{ item.title }}</td>
+                <td class="max-w-[260px] px-3 py-2 text-sm font-medium text-slate-900 truncate">{{ item.title }}</td>
 
                 <!-- Module / Sub-module -->
                 <td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-700">
@@ -297,11 +312,11 @@ onUnmounted(() => document.removeEventListener("click", closePopover));
             </label>
           </div>
           <div class="flex items-center gap-2">
-            <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page <= 1" @click="page--; load()">
+            <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page <= 1 || loading" @click="page--; load()">
               <ChevronLeft class="h-3.5 w-3.5" />Previous
             </button>
             <span class="text-sm text-slate-500">Page {{ page }} of {{ totalPages }}</span>
-            <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page >= totalPages" @click="page++; load()">
+            <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page >= totalPages || loading" @click="page++; load()">
               Next<ChevronRight class="h-3.5 w-3.5" />
             </button>
           </div>

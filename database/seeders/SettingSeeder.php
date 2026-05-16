@@ -25,7 +25,7 @@ class SettingSeeder extends Seeder
             ['key' => 'faviconUrl', 'value' => ''],
             ['key' => 'language', 'value' => 'en'],
             ['key' => 'timezone', 'value' => 'UTC'],
-            ['key' => 'footerText', 'value' => ''],
+            ['key' => 'footerText', 'value' => 'Powered by LAB - A Datascience Sdn Bhd Unit'],
             ['key' => 'frontPageId', 'value' => 'null'],
         ];
 
