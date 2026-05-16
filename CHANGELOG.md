@@ -9,6 +9,26 @@ All notable changes to this project are documented in this file.
 - Redesign topbar with a darker "PowerBar" concept.
 - Build notification module and add topbar notifications dropdown (similar to settings) showing the latest 5 notifications.
 
+## [1.2.3] - 2026-05-16
+
+### Fixed
+- Document title now resolves correctly on hard refresh for all routes — `afterEach` defers title set until `site.load()` resolves, preventing stale default "CORRAD Laravel" from appearing.
+
+## [1.2.2] - 2026-05-16
+
+### Fixed
+- Restored missing `rtmf.ts` API exports (`listRtmfProjects`, `listRtmfScenarios`, `listRtmfFrontendFeedbacks`, `upsertRtmfFrontendFeedback`, `importRtmfCatalog`, scenario/step/link CRUD, project member CRUD, API endpoint CRUD) lost after pulling from main.
+
+### Changed
+- Storefront layout: logo now uses natural proportions matching admin topbar (no forced square).
+- Storefront layout: site name and tagline removed from top navbar.
+- Storefront layout: Login button styled black with `LogIn` icon.
+- Storefront layout: footer pinned to bottom of viewport.
+- Storefront layout: content area is now full-width with no constraining box.
+- Storefront layout: page title hidden — only page content renders.
+- Storefront: document title now resolves from `webfrontTitle`/`siteTitle`, skipping literal `"null"` DB values.
+- Login page: removed hardcoded default email and password values from input fields.
+
 ## [1.2.1] - 2026-05-16
 
 ### Added

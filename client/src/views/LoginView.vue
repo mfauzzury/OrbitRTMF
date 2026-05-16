@@ -11,8 +11,8 @@ const router = useRouter();
 const auth = useAuthStore();
 const site = useSiteStore();
 
-const email = ref("admin@example.com");
-const password = ref("admin12345");
+const email = ref("");
+const password = ref("");
 const error = ref("");
 const showPassword = ref(false);
 
@@ -62,8 +62,8 @@ async function submit() {
             <input
               v-model="email"
               type="email"
-              class="w-full rounded-md border border-[#d8dee4] bg-white px-3 py-[9px] text-sm text-[#1a1f36] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow placeholder:text-[#a3acb9] focus:border-[#5469d4] focus:outline-none focus:ring-2 focus:ring-[#5469d4]/20"
-              placeholder="you@example.com"
+              autocomplete="email"
+              class="w-full rounded-md border border-[#d8dee4] bg-white px-3 py-[9px] text-sm text-[#1a1f36] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow focus:border-[#5469d4] focus:outline-none focus:ring-2 focus:ring-[#5469d4]/20"
             />
           </div>
 
@@ -73,8 +73,8 @@ async function submit() {
               <input
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
-                class="w-full rounded-md border border-[#d8dee4] bg-white px-3 py-[9px] pr-10 text-sm text-[#1a1f36] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow placeholder:text-[#a3acb9] focus:border-[#5469d4] focus:outline-none focus:ring-2 focus:ring-[#5469d4]/20"
-                placeholder="Enter your password"
+                autocomplete="current-password"
+                class="w-full rounded-md border border-[#d8dee4] bg-white px-3 py-[9px] pr-10 text-sm text-[#1a1f36] shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-shadow focus:border-[#5469d4] focus:outline-none focus:ring-2 focus:ring-[#5469d4]/20"
               />
               <button
                 type="button"

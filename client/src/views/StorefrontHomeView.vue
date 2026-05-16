@@ -17,6 +17,9 @@ onMounted(async () => {
     const [siteResponse, pageResponse] = await Promise.all([getPublicSiteSettings(), getPublicFrontPage()]);
     site.value = siteResponse.data;
     page.value = pageResponse.data;
+    const resolvedTitle = [site.value?.webfrontTitle, site.value?.siteTitle]
+      .find(t => t && t !== "null");
+    if (resolvedTitle) document.title = resolvedTitle;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     const isNetworkError = msg.includes("NetworkError") || msg.includes("Failed to fetch") || msg.includes("fetch");

@@ -282,7 +282,9 @@ router.beforeEach(async (to) => {
 router.afterEach((to) => {
   const site = useSiteStore();
   const pageTitle = (to.meta.title as string) || "Admin";
-  site.setDocumentTitle(pageTitle);
+  site.load().then(() => {
+    site.setDocumentTitle(pageTitle);
+  });
 });
 
 export default router;

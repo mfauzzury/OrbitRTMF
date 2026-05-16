@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { LogIn } from "lucide-vue-next";
 import { API_BASE_URL } from "@/env";
 import type { Page, PublicSiteSettings, StorefrontMenuItem } from "@/types";
 import { markdownToSafeHtml } from "@/utils/markdown";
@@ -12,9 +13,13 @@ const props = defineProps<{
 }>();
 
 function resolveUrl(url: string) {
-  if (!url) return "";
+  if (!url || url === "null") return "";
   if (url.startsWith("http")) return url;
   return `${API_BASE_URL}${url}`;
+}
+
+function validUrl(url: string | null | undefined) {
+  return !!url && url !== "null";
 }
 
 const renderedContent = computed(() => markdownToSafeHtml(props.page?.content || ""));
@@ -40,19 +45,16 @@ const menuTree = computed(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-100 text-slate-900">
+  <div class="flex min-h-screen flex-col bg-slate-100 text-slate-900">
     <header class="border-b border-slate-200 bg-white/90 backdrop-blur">
       <div class="mx-auto flex w-full max-w-4xl items-center justify-between px-4 py-4">
         <div class="flex items-center gap-3">
-          <div v-if="site?.webfrontLogoUrl || site?.siteIconUrl" class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <img :src="resolveUrl(site?.webfrontLogoUrl || site?.siteIconUrl || '')" alt="Webfront logo" class="h-full w-full object-contain" />
-          </div>
-          <div>
-            <p class="text-lg font-semibold">{{ site?.webfrontTitle || site?.siteTitle || "Webfront" }}</p>
-            <p v-if="site?.webfrontTagline || site?.tagline" class="text-sm text-slate-500">{{ site?.webfrontTagline || site?.tagline }}</p>
+          <div v-if="validUrl(site?.webfrontLogoUrl) || validUrl(site?.siteIconUrl)" class="flex h-[20px] shrink-0 items-center justify-center overflow-hidden">
+            <img :src="resolveUrl(validUrl(site?.webfrontLogoUrl) ? site!.webfrontLogoUrl : site?.siteIconUrl || '')" alt="Webfront logo" class="h-full w-auto object-contain" />
           </div>
         </div>
-        <router-link to="/admin/login" class="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700">
+        <router-link to="/admin/login" class="flex items-center gap-1.5 rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800">
+          <LogIn class="h-4 w-4" />
           Login
         </router-link>
       </div>
@@ -108,7 +110,7 @@ const menuTree = computed(() => {
       </div>
     </header>
 
-    <main class="mx-auto w-full max-w-4xl px-4 py-8">
+    <main class="w-full flex-1 px-4 py-8">
       <div v-if="loading" class="rounded-lg border border-slate-200 bg-white p-6 text-slate-500">Loading page...</div>
       <div v-else-if="error === 'NETWORK_ERROR'" class="rounded-xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
         <div class="mb-3 flex items-center gap-2">
@@ -124,15 +126,14 @@ const menuTree = computed(() => {
         <p class="mt-4 text-xs text-amber-600">Once services are running, refresh this page.</p>
       </div>
       <div v-else-if="error" class="rounded-lg border border-rose-200 bg-rose-50 p-6 text-rose-700">{{ error }}</div>
-      <article v-else-if="page" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <article v-else-if="page">
         <img
           v-if="page.featuredImage?.url"
           :src="resolveUrl(page.featuredImage.url)"
           :alt="page.featuredImage.altText || page.featuredImage.originalName"
           class="h-56 w-full object-cover"
         />
-        <div class="space-y-5 p-6">
-          <h1 class="text-3xl font-bold tracking-tight">{{ page.title }}</h1>
+        <div>
           <div class="storefront-markdown" v-html="renderedContent" />
         </div>
       </article>

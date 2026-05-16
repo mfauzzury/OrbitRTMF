@@ -35,9 +35,7 @@ export const useSiteStore = defineStore("site", {
       this.footerText = payload.footerText || "";
     },
     setDocumentTitle(pageTitle: string) {
-      document.title = this.titleFormat
-        .replace("%page%", pageTitle)
-        .replace("%site%", this.siteTitle);
+      document.title = `${pageTitle} | ${this.siteTitle}`;
     },
   },
 });

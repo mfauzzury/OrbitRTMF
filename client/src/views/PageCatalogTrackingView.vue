@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import {
   AppWindow, Users, Layers, GitBranch,
   ArrowRight, CheckCircle2, RefreshCw,
-  ClipboardCheck, ShieldCheck, Wrench, FlaskConical, Code2,
+  ClipboardCheck, Wrench, FlaskConical, Code2, TableProperties,
 } from "lucide-vue-next";
 
 import AdminLayout from "@/layouts/AdminLayout.vue";
