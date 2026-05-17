@@ -1,5 +1,14 @@
 # Changelog
 
+## [2026-05-17] — Pagination Fix, Storage Link, Relations Diagram, Feedback Labels
+
+### Fixed
+- **Mockup images disappearing after redeploy** — `php artisan storage:link --force` added to the deploy script (`composer setup`) so the `public/storage` symlink is always recreated on redeploy. Run `php artisan storage:link --force` on the server to fix immediately without a full redeploy.
+- **Condition page chips blank after redeploy** — `allFrontends` was not loaded yet when items rendered, causing `pageForLine()` to return nothing. Fixed by awaiting `allFrontends` in parallel with page data on mount.
+- **Pagination flickering on slow servers** — stale responses from rapid Next/Previous clicks could overwrite newer results. Added a load sequence guard to discard out-of-order responses. Table rows now stay fully visible while loading (spinner shown in pagination bar instead of dimming the whole table), matching the behaviour of the CR Tracking page.
+
+---
+
 ## [2026-05-17] — Relations Diagram, Feedback Labels, and UI Cleanup
 
 ### Added
