@@ -30,7 +30,10 @@ const doneFilter = ref<"" | "1" | "0">("");
 const rangeStart = computed(() => (total.value === 0 ? 0 : (page.value - 1) * limit.value + 1));
 const rangeEnd = computed(() => Math.min(page.value * limit.value, total.value));
 
+let loadSeq = 0;
+
 async function load() {
+  const seq = ++loadSeq;
   loading.value = true;
   const params = new URLSearchParams({ page: String(page.value), limit: String(limit.value) });
   if (q.value) params.set("q", q.value);
@@ -40,13 +43,15 @@ async function load() {
   if (pid) params.set("project_id", String(pid));
   try {
     const response = await listRtmfFrontends(`?${params.toString()}`);
+    if (seq !== loadSeq) return;
     rows.value = response.data;
     total.value = (response.meta?.total as number) ?? response.data.length;
     totalPages.value = (response.meta?.totalPages as number) ?? (Math.ceil(total.value / limit.value) || 1);
   } catch (e) {
+    if (seq !== loadSeq) return;
     toast.error("Failed to load", e instanceof Error ? e.message : "API error");
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
@@ -144,7 +149,7 @@ onMounted(async () => {
         </div>
 
         <!-- Table -->
-        <div class="table-container" :class="{ 'opacity-60 pointer-events-none': loading }">
+        <div class="table-container">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-slate-100 text-left">
@@ -277,7 +282,10 @@ onMounted(async () => {
             <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page <= 1 || loading" @click="page--; load()">
               <ChevronLeft class="h-3.5 w-3.5" />Previous
             </button>
-            <span class="text-sm text-slate-500">Page {{ page }} of {{ totalPages }}</span>
+            <span class="flex items-center gap-1.5 text-sm text-slate-500">
+              <svg v-if="loading" class="h-3.5 w-3.5 animate-spin text-violet-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              Page {{ page }} of {{ totalPages }}
+            </span>
             <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page >= totalPages || loading" @click="page++; load()">
               Next<ChevronRight class="h-3.5 w-3.5" />
             </button>
