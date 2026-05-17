@@ -37,10 +37,13 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     }
   }
 
+  const isGet = !options.method || options.method.toUpperCase() === "GET";
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: "include",
     headers,
+    cache: isGet ? "no-store" : options.cache,
   });
 
   const payload = await response.json();

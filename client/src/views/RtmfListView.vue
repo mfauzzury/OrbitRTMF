@@ -5,12 +5,10 @@ import { ChevronLeft, ChevronRight, LayoutGrid, Plus, Search } from "lucide-vue-
 
 import AdminLayout from "@/layouts/AdminLayout.vue";
 import { listRtmfFrontends, listRtmfModules } from "@/api/rtmf";
-import { useAuthStore } from "@/stores/auth";
 import { useRtmfProjectStore } from "@/stores/rtmfProject";
 import { useToast } from "@/composables/useToast";
 import type { RtmfFrontend, RtmfModule } from "@/types";
 
-const auth = useAuthStore();
 const router = useRouter();
 const toast = useToast();
 const projectStore = useRtmfProjectStore();
@@ -30,10 +28,7 @@ const doneFilter = ref<"" | "1" | "0">("");
 const rangeStart = computed(() => (total.value === 0 ? 0 : (page.value - 1) * limit.value + 1));
 const rangeEnd = computed(() => Math.min(page.value * limit.value, total.value));
 
-let loadSeq = 0;
-
 async function load() {
-  const seq = ++loadSeq;
   loading.value = true;
   const params = new URLSearchParams({ page: String(page.value), limit: String(limit.value) });
   if (q.value) params.set("q", q.value);
@@ -43,21 +38,33 @@ async function load() {
   if (pid) params.set("project_id", String(pid));
   try {
     const response = await listRtmfFrontends(`?${params.toString()}`);
-    if (seq !== loadSeq) return;
     rows.value = response.data;
     total.value = (response.meta?.total as number) ?? response.data.length;
     totalPages.value = (response.meta?.totalPages as number) ?? (Math.ceil(total.value / limit.value) || 1);
   } catch (e) {
-    if (seq !== loadSeq) return;
     toast.error("Failed to load", e instanceof Error ? e.message : "API error");
   } finally {
-    if (seq === loadSeq) loading.value = false;
+    loading.value = false;
   }
 }
 
 function resetAndLoad() {
   page.value = 1;
   load();
+}
+
+function prevPage() {
+  if (page.value > 1 && !loading.value) {
+    page.value--;
+    load();
+  }
+}
+
+function nextPage() {
+  if (page.value < totalPages.value && !loading.value) {
+    page.value++;
+    load();
+  }
 }
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -156,12 +163,19 @@ onMounted(async () => {
                 <th class="whitespace-nowrap px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Page ID</th>
                 <th class="whitespace-nowrap px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Title</th>
                 <th class="whitespace-nowrap px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Module / Sub-module</th>
-                <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Done</th>
-                <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-violet-500">BA</th>
-                <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-sky-500">QA</th>
-                <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-amber-500">Tech</th>
-                <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-green-600">Dev</th>
-                <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Assigned</th>
+                <th class="whitespace-nowrap px-2 py-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Done</th>
+                <th class="whitespace-nowrap px-2 py-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <span class="flex items-center justify-center gap-1">
+                    <span class="text-violet-500">BA</span>
+                    <span class="text-slate-300">·</span>
+                    <span class="text-sky-500">QA</span>
+                    <span class="text-slate-300">·</span>
+                    <span class="text-amber-500">Tech</span>
+                    <span class="text-slate-300">·</span>
+                    <span class="text-green-600">Dev</span>
+                  </span>
+                </th>
+                <th class="whitespace-nowrap px-2 py-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Assigned</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -195,26 +209,25 @@ onMounted(async () => {
                   </span>
                 </td>
 
-                <!-- BA / QA / Technical review -->
-                <td
-                  v-for="(role, color) in [['business_analyst','violet'],['qa','sky'],['technical','amber'],['developer','green']]"
-                  :key="role"
-                  class="whitespace-nowrap px-3 py-2 text-center"
-                  @click.stop
-                >
-                  <span
-                    :title="({ open: 'Open', reviewed: 'In Progress', approved: 'Closed' }[item.feedbacks?.find(f => f.role === role)?.status ?? 'open'] ?? 'Open')"
-                    class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold"
-                    :class="{
-                      'bg-emerald-100 text-emerald-600': item.feedbacks?.find(f => f.role === role)?.status === 'approved',
-                      'bg-amber-100 text-amber-600':     item.feedbacks?.find(f => f.role === role)?.status === 'reviewed',
-                      'bg-slate-100 text-slate-300':     !item.feedbacks?.find(f => f.role === role) || item.feedbacks?.find(f => f.role === role)?.status === 'open',
-                    }"
-                  >
-                    <svg v-if="item.feedbacks?.find(f => f.role === role)?.status === 'approved'" viewBox="0 0 12 12" class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3" /></svg>
-                    <svg v-else-if="item.feedbacks?.find(f => f.role === role)?.status === 'reviewed'" viewBox="0 0 12 12" class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3" /></svg>
-                    <svg v-else viewBox="0 0 12 12" class="h-2.5 w-2.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="9" /><line x1="3" y1="6" x2="9" y2="6" /></svg>
-                  </span>
+                <!-- Reviews: BA · QA · Tech · Dev -->
+                <td class="px-2 py-2 text-center" @click.stop>
+                  <div class="flex items-center justify-center gap-1">
+                    <span
+                      v-for="role in (['business_analyst', 'qa', 'technical', 'developer'] as const)"
+                      :key="role"
+                      :title="`${role === 'business_analyst' ? 'BA' : role === 'qa' ? 'QA' : role === 'technical' ? 'Tech' : 'Dev'}: ${{ open: 'Open', reviewed: 'In Progress', approved: 'Closed' }[item.feedbacks?.find(f => f.role === role)?.status ?? 'open'] ?? 'Open'}`"
+                      class="inline-flex h-4 w-4 items-center justify-center rounded-full"
+                      :class="{
+                        'bg-emerald-100 text-emerald-600': item.feedbacks?.find(f => f.role === role)?.status === 'approved',
+                        'bg-amber-100 text-amber-600':     item.feedbacks?.find(f => f.role === role)?.status === 'reviewed',
+                        'bg-slate-100 text-slate-300':     !item.feedbacks?.find(f => f.role === role) || item.feedbacks?.find(f => f.role === role)?.status === 'open',
+                      }"
+                    >
+                      <svg v-if="item.feedbacks?.find(f => f.role === role)?.status === 'approved'" viewBox="0 0 12 12" class="h-2 w-2" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2,6 5,9 10,3" /></svg>
+                      <svg v-else-if="item.feedbacks?.find(f => f.role === role)?.status === 'reviewed'" viewBox="0 0 12 12" class="h-2 w-2" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3" /></svg>
+                      <svg v-else viewBox="0 0 12 12" class="h-2 w-2" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="9" /><line x1="3" y1="6" x2="9" y2="6" /></svg>
+                    </span>
+                  </div>
                 </td>
 
                 <!-- Assignees -->
@@ -253,7 +266,7 @@ onMounted(async () => {
 
               </tr>
               <tr v-if="rows.length === 0">
-                <td colspan="9" class="px-4 py-6 text-center text-sm text-slate-400">No frontend entries found.</td>
+                <td colspan="7" class="px-4 py-6 text-center text-sm text-slate-400">No frontend entries found.</td>
               </tr>
             </tbody>
           </table>
@@ -279,14 +292,14 @@ onMounted(async () => {
             </label>
           </div>
           <div class="flex items-center gap-2">
-            <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page <= 1 || loading" @click="page--; load()">
+            <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page <= 1 || loading" @click="prevPage">
               <ChevronLeft class="h-3.5 w-3.5" />Previous
             </button>
             <span class="flex items-center gap-1.5 text-sm text-slate-500">
               <svg v-if="loading" class="h-3.5 w-3.5 animate-spin text-violet-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
               Page {{ page }} of {{ totalPages }}
             </span>
-            <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page >= totalPages || loading" @click="page++; load()">
+            <button class="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40" :disabled="page >= totalPages || loading" @click="nextPage">
               Next<ChevronRight class="h-3.5 w-3.5" />
             </button>
           </div>
