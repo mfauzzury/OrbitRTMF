@@ -9,6 +9,31 @@ All notable changes to this project are documented in this file.
 - Redesign topbar with a darker "PowerBar" concept.
 - Build notification module and add topbar notifications dropdown (similar to settings) showing the latest 5 notifications.
 
+## [1.2.4] - 2026-05-17
+
+### Added
+- **Relations tab** on the RTMF frontend editor — SVG diagram showing bidirectional page relationships: incoming pages (sky/teal, left) and outgoing pages (violet, right) with labeled arrows. Tab badge shows combined count.
+- Incoming links API endpoint (`GET /rtmf-frontends/{id}/incoming-links`) using PostgreSQL jsonb `@>` query to find all pages that link to the current page via action item conditions.
+
+### Changed
+- Page-level From/To link fields removed from editor, form requests, and controller — relationships now live exclusively at the form item level via the Condition / Page Link column.
+- Feedback status display labels changed to Open / In Progress / Closed (DB values `open` / `reviewed` / `approved` unchanged). Updated across editor, list, dashboard, and catalog tracking views.
+- Links column removed from the RTMF frontend list view.
+- Item ID shown as small monospace label below the Type dropdown in the form items table for quick reference.
+- Cancel / "Back to List" button is now always visible regardless of edit permission.
+- Condition column header renamed to "Condition / Page Link".
+- Dashboard role cards now show a three-segment stacked progress bar (Closed / In Progress / Open) instead of a single-color bar.
+- Page picker selection in condition column now saves to DB immediately on pick.
+- `allFrontends` loader now awaited in parallel with page data on mount to eliminate page chip race condition.
+
+### Fixed
+- Page picker chips showing empty on first open due to `allFrontends` not yet loaded.
+- Selecting a page in the condition picker did not persist to the database.
+
+### Removed
+- Dead `frontendById()` function and unused `isAssignedToMe` computed.
+- Duplicate `Trash2 as TrashIcon` icon alias — consolidated to single `Trash2`.
+
 ## [1.2.3] - 2026-05-16
 
 ### Fixed

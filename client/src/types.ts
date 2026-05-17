@@ -199,8 +199,6 @@ export type RtmfFrontendInput = {
   moduleId: number;
   subModuleId?: number | null;
   actorIds?: number[];
-  fromIds?: number[];
-  toIds?: number[];
   assignees?: RtmfFrontendAssignee[];
   isDone?: boolean;
   vuePath?: string | null;

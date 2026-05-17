@@ -67,6 +67,8 @@ const reviewRoles = computed(() => {
     ...role,
     total,
     approvedPct: total ? Math.round((role.stat.approved / total) * 100) : 0,
+    reviewedPct: total ? Math.round((role.stat.reviewed / total) * 100) : 0,
+    openPct:     total ? Math.round((role.stat.open / total) * 100) : 0,
   }));
 });
 
@@ -214,23 +216,19 @@ const bgMap: Record<string, string> = {
               <p class="min-w-0 flex-1 truncate text-sm font-semibold" :class="textMap[role.color]">{{ role.label }}</p>
               <span class="shrink-0 text-xs font-semibold" :class="textMap[role.color]">{{ role.approvedPct }}%</span>
             </div>
-            <div class="mt-3 flex items-center gap-1">
-              <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/60">
-                <div
-                  class="h-full rounded-full transition-all"
-                  :class="colorMap[role.color]"
-                  :style="{ width: role.approvedPct + '%' }"
-                />
-              </div>
+            <div class="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-white/60">
+              <div class="h-full transition-all" :class="colorMap[role.color]" :style="{ width: role.approvedPct + '%' }" />
+              <div class="h-full bg-amber-400 transition-all" :style="{ width: role.reviewedPct + '%' }" />
+              <div class="h-full bg-slate-300 transition-all" :style="{ width: role.openPct + '%' }" />
             </div>
             <div class="mt-3 grid grid-cols-3 gap-2 text-center">
               <div>
                 <p class="text-base font-semibold" :class="textMap[role.color]">{{ role.stat.approved }}</p>
-                <p class="text-[10px] text-slate-500">Approved</p>
+                <p class="text-[10px] text-slate-500">Closed</p>
               </div>
               <div>
                 <p class="text-base font-semibold text-slate-600">{{ role.stat.reviewed }}</p>
-                <p class="text-[10px] text-slate-500">Reviewed</p>
+                <p class="text-[10px] text-slate-500">In Progress</p>
               </div>
               <div>
                 <p class="text-base font-semibold text-slate-400">{{ role.stat.open }}</p>
@@ -273,8 +271,8 @@ const bgMap: Record<string, string> = {
                 </div>
               </div>
               <div class="shrink-0 text-right">
-                <p class="text-xs font-semibold text-emerald-600">{{ mod.approved }} approved</p>
-                <p class="text-[10px] text-slate-400">{{ mod.reviewed }} reviewed · {{ mod.open }} open</p>
+                <p class="text-xs font-semibold text-emerald-600">{{ mod.approved }} closed</p>
+                <p class="text-[10px] text-slate-400">{{ mod.reviewed }} in progress · {{ mod.open }} open</p>
               </div>
             </div>
           </div>

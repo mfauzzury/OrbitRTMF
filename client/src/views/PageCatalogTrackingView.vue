@@ -226,11 +226,11 @@ const bgMap: Record<string, string> = {
             <div class="mt-3 grid grid-cols-3 gap-2 text-center">
               <div>
                 <p class="text-base font-semibold" :class="textMap[role.color]">{{ role.stat.approved }}</p>
-                <p class="text-[10px] text-slate-500">Approved</p>
+                <p class="text-[10px] text-slate-500">Closed</p>
               </div>
               <div>
                 <p class="text-base font-semibold text-slate-600">{{ role.stat.reviewed }}</p>
-                <p class="text-[10px] text-slate-500">Reviewed</p>
+                <p class="text-[10px] text-slate-500">In Progress</p>
               </div>
               <div>
                 <p class="text-base font-semibold text-slate-400">{{ role.stat.open }}</p>
@@ -273,8 +273,8 @@ const bgMap: Record<string, string> = {
                 </div>
               </div>
               <div class="shrink-0 text-right">
-                <p class="text-xs font-semibold text-emerald-600">{{ mod.approved }} approved</p>
-                <p class="text-[10px] text-slate-400">{{ mod.reviewed }} reviewed · {{ mod.open }} open</p>
+                <p class="text-xs font-semibold text-emerald-600">{{ mod.approved }} closed</p>
+                <p class="text-[10px] text-slate-400">{{ mod.reviewed }} in progress · {{ mod.open }} open</p>
               </div>
             </div>
           </div>

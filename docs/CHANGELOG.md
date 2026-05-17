@@ -1,5 +1,29 @@
 # Changelog
 
+## [2026-05-17] — Relations Diagram, Feedback Labels, and UI Cleanup
+
+### Added
+- **Relations tab** in the RTMF frontend editor — SVG diagram showing bidirectional page relationships: pages that link TO the current page (sky/teal, left) and pages linked FROM the current page (violet, right), with labeled arrows showing item type and condition.
+- **Incoming links API** (`GET /rtmf-frontends/{id}/incoming-links`) — finds all pages that reference the current page via action item conditions using a PostgreSQL jsonb query.
+
+### Changed
+- **Feedback status labels** renamed across editor, list, dashboard, and catalog tracking: Reviewed → In Progress, Approved → Closed (database values unchanged).
+- **Links column removed** from the RTMF frontend list view.
+- **Item ID** (`#2559`) now shown as a small monospace label below the Type dropdown in the form items table for quick reference.
+- **Cancel / Back to List** button is now always visible regardless of edit permission.
+- **Condition column header** renamed to "Condition / Page Link".
+- **Dashboard role cards** now show a three-segment stacked progress bar (Closed / In Progress / Open) instead of a single-color closed-only bar.
+- Page picker selection in the condition column now saves to the database immediately on pick.
+
+### Fixed
+- Page picker chips showing empty on first open — `allFrontends` now loaded in parallel with page data on mount.
+- Selecting a page in the condition picker did not persist to the database.
+
+### Removed
+- Page-level From/To link fields from the editor, form requests, and controller — relationships now live exclusively at the form item level.
+
+---
+
 ## [2026-05-16] — UI Bug Fixes, Pagination, Dropdown Overlap, Dashboard Scenarios
 
 ### Fixed

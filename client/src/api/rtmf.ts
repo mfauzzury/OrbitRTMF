@@ -58,6 +58,10 @@ export async function getRtmfFrontend(id: number) {
   return apiRequest<{ data: RtmfFrontend }>(`/api/rtmf-frontends/${id}`);
 }
 
+export async function getRtmfIncomingLinks(id: number) {
+  return apiRequest<{ data: { id: number; specId: string; title: string; links: { itemId: number; type: string | null }[] }[] }>(`/api/rtmf-frontends/${id}/incoming-links`);
+}
+
 export async function createRtmfFrontend(input: RtmfFrontendInput) {
   return apiRequest<{ data: RtmfFrontend }>("/api/rtmf-frontends", {
     method: "POST",

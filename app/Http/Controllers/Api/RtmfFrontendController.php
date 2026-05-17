@@ -45,8 +45,6 @@ class RtmfFrontendController extends Controller
             'module:id,code,name',
             'subModule:id,module_id,code,name',
             'actors:id,name',
-            'linksFrom:id,spec_id,title',
-            'linksTo:id,spec_id,title',
             'feedbacks:id,rtmf_frontend_id,role,status',
         ]);
 
@@ -97,22 +95,18 @@ class RtmfFrontendController extends Controller
         if ($deny = $this->denyIfCannotEdit($request, $module?->project_id)) return $deny;
 
         $actorIds = $data['actor_ids'] ?? [];
-        $fromIds = $data['from_ids'] ?? [];
-        $toIds = $data['to_ids'] ?? [];
-        unset($data['actor_ids'], $data['from_ids'], $data['to_ids']);
+        unset($data['actor_ids']);
 
         $row = RtmfFrontend::create($data);
         $row->actors()->sync($actorIds);
-        $row->linksFrom()->sync($fromIds);
-        $row->linksTo()->sync($toIds);
-        $row->load(['module', 'subModule', 'actors', 'linksFrom:id,spec_id,title', 'linksTo:id,spec_id,title']);
+        $row->load(['module', 'subModule', 'actors']);
 
         return $this->sendOk($row);
     }
 
     public function show(int $id): JsonResponse
     {
-        $row = RtmfFrontend::with(['module', 'subModule', 'actors', 'linksFrom:id,spec_id,title', 'linksTo:id,spec_id,title'])->find($id);
+        $row = RtmfFrontend::with(['module', 'subModule', 'actors'])->find($id);
 
         if (! $row) {
             return $this->sendError(404, 'NOT_FOUND', 'RTMF frontend not found');
@@ -135,19 +129,37 @@ class RtmfFrontendController extends Controller
         $data = $request->validated();
         $hasActors = array_key_exists('actor_ids', $data);
         $actorIds = $data['actor_ids'] ?? [];
-        $hasFromIds = array_key_exists('from_ids', $data);
-        $fromIds = $data['from_ids'] ?? [];
-        $hasToIds = array_key_exists('to_ids', $data);
-        $toIds = $data['to_ids'] ?? [];
-        unset($data['actor_ids'], $data['from_ids'], $data['to_ids']);
+        unset($data['actor_ids']);
 
         $row->update($data);
         if ($hasActors) $row->actors()->sync($actorIds);
-        if ($hasFromIds) $row->linksFrom()->sync($fromIds);
-        if ($hasToIds) $row->linksTo()->sync($toIds);
-        $row->load(['module', 'subModule', 'actors', 'linksFrom:id,spec_id,title', 'linksTo:id,spec_id,title']);
+        $row->load(['module', 'subModule', 'actors']);
 
         return $this->sendOk($row);
+    }
+
+    public function incomingLinks(int $id): JsonResponse
+    {
+        $items = RtmfFrontendItem::whereRaw("condition::jsonb @> ?", [json_encode([['p' => $id]])])
+            ->select('id', 'rtmf_frontend_id', 'type', 'condition')
+            ->with('frontend:id,spec_id,title')
+            ->get();
+
+        $result = $items->groupBy('rtmf_frontend_id')->map(function ($grouped) {
+            $frontend = $grouped->first()->frontend;
+            if (! $frontend) return null;
+            return [
+                'id'     => $frontend->id,
+                'specId' => $frontend->spec_id,
+                'title'  => $frontend->title,
+                'links'  => $grouped->map(fn ($i) => [
+                    'itemId' => $i->id,
+                    'type'   => $i->type,
+                ])->values(),
+            ];
+        })->filter()->values();
+
+        return $this->sendOk($result);
     }
 
     public function source(int $id): JsonResponse

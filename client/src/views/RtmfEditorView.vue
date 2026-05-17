@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { Cable, Paperclip, Trash2 as TrashIcon, LayoutGrid, Save, Trash2, Upload, X, Plus, TableProperties, ExternalLink, GitMerge, Search, Network, GripVertical, Layout, UserCheck, MessageSquare, CheckCircle2 } from "lucide-vue-next";
+import { Cable, Paperclip, Trash2, LayoutGrid, Save, Upload, X, Plus, TableProperties, ExternalLink, Search, GripVertical, Layout, UserCheck, MessageSquare, CheckCircle2, Share2 } from "lucide-vue-next";
 
 import AdminLayout from "@/layouts/AdminLayout.vue";
 import MarkdownEditor from "@/components/MarkdownEditor.vue";
@@ -35,6 +35,7 @@ import {
   createRtmfApiEndpoint,
   updateRtmfApiEndpoint,
   deleteRtmfApiEndpoint,
+  getRtmfIncomingLinks,
 } from "@/api/rtmf";
 import { listUsers, listExternalUsers } from "@/api/cms";
 import type { RtmfActor, RtmfApiEndpointMethod, RtmfAttachment, RtmfFrontend, RtmfFrontendApiEndpoint, RtmfFrontendAssignee, RtmfFrontendFeedback, RtmfFrontendFeedbackStatus, RtmfFrontendItem, RtmfFrontendScenarioGroup, RtmfFrontendScenarioRow, RtmfModule, RtmfSubModule } from "@/types";
@@ -42,6 +43,27 @@ import { useConfirmDialog } from "@/composables/useConfirmDialog";
 import { useToast } from "@/composables/useToast";
 import { useAuthStore } from "@/stores/auth";
 import { useRtmfProjectStore } from "@/stores/rtmfProject";
+
+const vAutoResize = {
+  mounted(el: HTMLTextAreaElement) {
+    const MAX = 160;
+    const resize = () => {
+      el.style.height = 'auto';
+      const next = Math.min(el.scrollHeight, MAX);
+      el.style.height = next + 'px';
+      el.style.overflowY = el.scrollHeight > MAX ? 'auto' : 'hidden';
+    };
+    resize();
+    el.addEventListener('input', resize);
+  },
+  updated(el: HTMLTextAreaElement) {
+    const MAX = 160;
+    el.style.height = 'auto';
+    const next = Math.min(el.scrollHeight, MAX);
+    el.style.height = next + 'px';
+    el.style.overflowY = el.scrollHeight > MAX ? 'auto' : 'hidden';
+  },
+};
 
 const route = useRoute();
 const router = useRouter();
@@ -95,36 +117,9 @@ function addAssignee(user: AssigneeOption) {
   assigneeDropdownOpen.value = false;
 }
 
-// ── Page Links ──
-type PageLinkRow = { id: number | null; note: string; search: string };
-const fromLinks = ref<PageLinkRow[]>([]);
-const toLinks = ref<PageLinkRow[]>([]);
+// ── Page Links (item-level) ──
 const allFrontends = ref<RtmfFrontend[]>([]);
 const linksLoading = ref(true);
-
-type LinkDropdown = { type: 'from' | 'to'; index: number; x: number; y: number; width: number; el: HTMLElement } | null;
-const linkDropdown = ref<LinkDropdown>(null);
-
-function updateLinkDropdownPos() {
-  if (!linkDropdown.value) return;
-  const rect = linkDropdown.value.el.getBoundingClientRect();
-  linkDropdown.value.x = rect.left;
-  linkDropdown.value.y = rect.bottom;
-  linkDropdown.value.width = rect.width;
-}
-
-function openLinkDropdown(e: Event, type: 'from' | 'to', index: number) {
-  const el = (e.target as HTMLElement).closest('.link-search-anchor') as HTMLElement;
-  if (!el) return;
-  const rect = el.getBoundingClientRect();
-  linkDropdown.value = { type, index, x: rect.left, y: rect.bottom, width: rect.width, el };
-  window.addEventListener('scroll', updateLinkDropdownPos, true);
-}
-
-function closeLinkDropdown() {
-  window.removeEventListener('scroll', updateLinkDropdownPos, true);
-  linkDropdown.value = null;
-}
 
 type CondDropdown = { itemId: number; li: number; x: number; y: number; width: number; el: HTMLElement } | null;
 const condDropdown = ref<CondDropdown>(null);
@@ -149,98 +144,17 @@ function closeCondDropdown() {
   condDropdown.value = null;
 }
 
-const fromIds = computed(() => fromLinks.value.filter((l) => l.id !== null).map((l) => l.id as number));
-const toIds = computed(() => toLinks.value.filter((l) => l.id !== null).map((l) => l.id as number));
-
-function frontendById(fid: number) {
-  return allFrontends.value.find((f) => f.id === fid);
-}
-
-function fromAvailable(rowId: number | null, search: string): RtmfFrontend[] {
-  const taken = fromLinks.value.filter((l) => l.id !== null && l.id !== rowId).map((l) => l.id);
-  const q = search.trim().toLowerCase();
-  return allFrontends.value
-    .filter((f) => f.id !== id.value && !taken.includes(f.id))
-    .filter((f) => !q || (f.specId ?? "").toLowerCase().includes(q) || (f.title ?? "").toLowerCase().includes(q));
-}
-
-function toAvailable(rowId: number | null, search: string): RtmfFrontend[] {
-  const taken = toLinks.value.filter((l) => l.id !== null && l.id !== rowId).map((l) => l.id);
-  const q = search.trim().toLowerCase();
-  return allFrontends.value
-    .filter((f) => f.id !== id.value && !taken.includes(f.id))
-    .filter((f) => !q || (f.specId ?? "").toLowerCase().includes(q) || (f.title ?? "").toLowerCase().includes(q));
-}
-
-const showDiagram = ref(false);
-
-const diagram = computed(() => {
-  const nodeW = 165;
-  const nodeH = 54;
-  const rowGap = 56;
-  const fromCount = fromIds.value.length;
-  const toCount = toIds.value.length;
-  const maxCount = Math.max(fromCount, toCount, 1);
-  const svgH = Math.max(maxCount * rowGap + 80, 180);
-
-  function colY(count: number, index: number): number {
-    const totalH = count * nodeH + (count - 1) * (rowGap - nodeH);
-    const startY = (svgH - totalH) / 2;
-    return startY + index * rowGap;
+function selectCondPage(itemId: number, li: number, pageId: number) {
+  conditionLines.value[itemId][li].p = pageId;
+  conditionPageSearch.value[`${itemId}_${li}`] = '';
+  closeCondDropdown();
+  const item = items.value.find((i) => i.id === itemId);
+  if (item) {
+    item.condition = serializeConditionLines(itemId);
+    saveItem(item);
   }
-
-  const leftX = 20;
-  const centerX = 205;
-  const rightX = 390;
-  const curY = svgH / 2 - nodeH / 2;
-
-  const fromNodes = fromIds.value.map((fid, i) => {
-    const f = frontendById(fid);
-    return { id: fid, specId: f?.specId ?? String(fid), title: f?.title ?? "", x: leftX, y: colY(fromCount, i) };
-  });
-
-  const toNodes = toIds.value.map((fid, i) => {
-    const f = frontendById(fid);
-    return { id: fid, specId: f?.specId ?? String(fid), title: f?.title ?? "", x: rightX, y: colY(toCount, i) };
-  });
-
-  return { fromNodes, toNodes, curX: centerX, curY, svgH, nodeW, nodeH };
-});
-
-function addFromLink() {
-  fromLinks.value.push({ id: null, note: "", search: "" });
 }
-async function removeFromLink(index: number) {
-  const row = fromLinks.value[index];
-  if (row.id !== null) {
-    const f = frontendById(row.id);
-    const ok = await confirmDialog.confirm({
-      title: "Remove link?",
-      message: `Remove "${f?.specId ?? row.id}" from the From links?`,
-      confirmText: "Remove",
-      destructive: true,
-    });
-    if (!ok) return;
-  }
-  fromLinks.value.splice(index, 1);
-}
-function addToLink() {
-  toLinks.value.push({ id: null, note: "", search: "" });
-}
-async function removeToLink(index: number) {
-  const row = toLinks.value[index];
-  if (row.id !== null) {
-    const f = frontendById(row.id);
-    const ok = await confirmDialog.confirm({
-      title: "Remove link?",
-      message: `Remove "${f?.specId ?? row.id}" from the Go To links?`,
-      confirmText: "Remove",
-      destructive: true,
-    });
-    if (!ok) return;
-  }
-  toLinks.value.splice(index, 1);
-}
+
 
 async function refreshSubModules() {
   if (!moduleId.value) {
@@ -339,8 +253,6 @@ async function load() {
   actorIds.value = (r.actors ?? []).map((a) => a.id);
   assignees.value = (r.assignees ?? []) as RtmfFrontendAssignee[];
   isDone.value = r.isDone ?? false;
-  fromLinks.value = (r.linksFrom ?? []).map((f) => ({ id: f.id, note: "", search: "" }));
-  toLinks.value = (r.linksTo ?? []).map((f) => ({ id: f.id, note: "", search: "" }));
   vuePath.value = r.vuePath || "";
   urlDev.value = r.urlDev || "";
   urlStg.value = r.urlStg || "";
@@ -365,8 +277,6 @@ async function save() {
     actorIds: actorIds.value,
     assignees: assignees.value,
     isDone: isDone.value,
-    fromIds: fromIds.value,
-    toIds: toIds.value,
     vuePath: vuePath.value.trim() || null,
     urlDev: urlDev.value.trim() || null,
     urlStg: urlStg.value.trim() || null,
@@ -392,9 +302,6 @@ async function save() {
   }
 }
 
-const isAssignedToMe = computed(() =>
-  auth.user ? assignees.value.some((a) => String(a.id) === String(auth.user!.id)) : false
-);
 async function syncDoneFromFeedbacks() {
   if (!isEdit.value) return;
   const allApproved = FEEDBACK_ROLES.every(r =>
@@ -430,7 +337,7 @@ async function remove() {
 // ── FR Items ──
 const items = ref<RtmfFrontendItem[]>([]);
 
-const ACTION_TYPES = ['Button', 'Link', 'Icon', 'Tab'];
+const ACTION_TYPES = ['Button', 'Link', 'Icon', 'Tab', 'Component', 'Form'];
 const isActionType = (type: string | null) => ACTION_TYPES.includes(type ?? '');
 
 // Each Action row stores paired condition+page entries: [{c: string, p: number|null}]
@@ -546,6 +453,15 @@ async function onItemDrop(targetIndex: number) {
 }
 
 async function removeItem(itemId: number) {
+  const item = items.value.find((i) => i.id === itemId);
+  const label = item?.label ? `"${item.label}"` : `item #${items.value.indexOf(item!) + 1}`;
+  const ok = await confirmDialog.confirm({
+    title: 'Delete Item',
+    message: `Remove ${label} from this page? This cannot be undone.`,
+    confirmText: 'Delete',
+    destructive: true,
+  });
+  if (!ok) return;
   await deleteRtmfFrontendItem(id.value, itemId);
   items.value = items.value.filter((i) => i.id !== itemId);
 }
@@ -600,7 +516,7 @@ function formatBytes(bytes: number) {
 }
 
 // ── Tab state ──
-const activeTab = ref<"frontend" | "api" | "mockup" | "scenario" | "feedback">("frontend");
+const activeTab = ref<"frontend" | "api" | "mockup" | "relation" | "scenario" | "feedback">("frontend");
 
 // ── API Endpoints ──
 const apiEndpoints = ref<RtmfFrontendApiEndpoint[]>([]);
@@ -684,6 +600,62 @@ async function saveFeedback(role: string, patch: { status?: string; comment?: st
     toast.error("Failed to save feedback");
   }
 }
+
+// ── Page relation diagram (built from conditionLines + incoming links API) ──
+type RelationNode = {
+  id: number;
+  specId: string;
+  title: string;
+  links: { itemLabel: string; condition: string }[];
+};
+type IncomingNode = { id: number; specId: string; title: string; links: { itemId: number; type: string | null }[] };
+
+const incomingNodes = ref<IncomingNode[]>([]);
+
+async function loadIncomingLinks() {
+  if (!isEdit.value) return;
+  try {
+    const res = await getRtmfIncomingLinks(id.value);
+    incomingNodes.value = res.data;
+  } catch { incomingNodes.value = []; }
+}
+
+const relationNodes = computed<RelationNode[]>(() => {
+  const map = new Map<number, RelationNode>();
+  for (const [itemIdStr, pairs] of Object.entries(conditionLines.value)) {
+    const itemId = Number(itemIdStr);
+    const item = items.value.find((i) => i.id === itemId);
+    if (!item) continue;
+    for (const pair of pairs) {
+      if (pair.p === null) continue;
+      const page = allFrontends.value.find((f) => f.id === pair.p);
+      if (!page) continue;
+      if (!map.has(pair.p)) {
+        map.set(pair.p, { id: pair.p, specId: page.specId, title: page.title, links: [] });
+      }
+      const cTrunc = pair.c.length > 18 ? pair.c.slice(0, 16) + '…' : pair.c;
+      map.get(pair.p)!.links.push({ itemLabel: `${item.type ?? 'Item'} #${itemId}`, condition: cTrunc });
+    }
+  }
+  return [...map.values()];
+});
+
+const relationDiagram = computed(() => {
+  const nodeW = 190;
+  const nodeH = 52;
+  const gap = 20;
+  const outNodes = relationNodes.value;
+  const inNodes = incomingNodes.value;
+  const n = Math.max(outNodes.length, inNodes.length, 1);
+  const svgH = Math.max(nodeH + 32, n * (nodeH + gap) + 32);
+  const curX = 220;
+  const curY = svgH / 2 - nodeH / 2;
+  const leftX = 16;
+  const rightX = 440;
+  const posIncoming = inNodes.map((node, i) => ({ ...node, x: leftX, y: i * (nodeH + gap) + 16 }));
+  const posOutgoing = outNodes.map((node, i) => ({ ...node, x: rightX, y: i * (nodeH + gap) + 16 }));
+  return { nodeW, nodeH, svgH, curX, curY, leftX, rightX, posIncoming, posOutgoing, svgW: rightX + nodeW + 16 };
+});
 
 // ── Mockup image (stored as attachment with label __mockup__) ──
 const mockupAttachment = computed(() => attachments.value.find((a) => a.label === "__mockup__") ?? null);
@@ -771,8 +743,7 @@ async function removeScenarioRow(group: RtmfFrontendScenarioGroup, rowId: number
 
 onMounted(async () => {
   await loadRefData();
-  loadAllFrontends();
-  await load();
+  await Promise.all([loadAllFrontends(), load()]);
   await loadItems();
   await loadAttachments();
   await loadScenarioGroups();
@@ -781,6 +752,7 @@ onMounted(async () => {
     feedbacks.value = fbRes.data;
     const epRes = await listRtmfApiEndpoints(id.value);
     apiEndpoints.value = epRes.data;
+    loadIncomingLinks();
   }
 });
 </script>
@@ -834,6 +806,15 @@ onMounted(async () => {
           <Layout class="h-4 w-4" />
           Mockup
           <span v-if="items.length" class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{{ items.length }}</span>
+        </button>
+        <button
+          @click="activeTab = 'relation'"
+          class="flex items-center gap-2 border-b-2 px-5 py-2.5 text-sm font-medium transition-colors"
+          :class="activeTab === 'relation' ? 'border-violet-600 bg-white text-violet-700' : 'border-transparent text-slate-500 hover:bg-white hover:text-slate-700'"
+        >
+          <Share2 class="h-4 w-4" />
+          Relations
+          <span v-if="relationNodes.length || incomingNodes.length" class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">{{ relationNodes.length + incomingNodes.length }}</span>
         </button>
         <!-- Scenario tab hidden temporarily -->
 
@@ -923,123 +904,6 @@ onMounted(async () => {
         <div class="p-4">
           <MarkdownEditor v-model="description" :rows="10" placeholder="Purpose, key fields, shared components used…" />
         </div>
-      </article>
-
-      <!-- Page Links hidden temporarily -->
-      <article v-if="false" class="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
-          <GitMerge class="h-4 w-4 text-violet-600" />
-          <h2 class="text-sm font-semibold text-slate-900">Page Links</h2>
-          <button
-            v-if="fromIds.length || toIds.length"
-            type="button"
-            @click="showDiagram = true"
-            class="ml-auto flex items-center justify-center rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            title="Show relation diagram"
-          >
-            <Network class="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <div v-if="linksLoading" class="px-4 py-6 text-center text-xs text-slate-400">Loading…</div>
-
-        <template v-else>
-          <!-- FROM section -->
-          <div class="border-b border-slate-100">
-            <div class="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">← From</div>
-            <div v-if="fromLinks.length > 0" class="grid min-w-[480px] grid-cols-[1fr_1fr_32px] gap-2 border-b border-slate-100 bg-slate-50 px-4 py-1.5 text-xs font-medium text-slate-500">
-              <span>Page</span><span>Note / Condition</span><span></span>
-            </div>
-            <div class="divide-y divide-slate-100">
-              <div
-                v-for="(row, i) in fromLinks"
-                :key="`from-${i}`"
-                class="grid min-w-[480px] grid-cols-[1fr_1fr_32px] items-center gap-2 px-4 py-2"
-              >
-                <div>
-                  <div v-if="row.id !== null" class="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
-                    <a :href="`/admin/rtmf/frontends/${row.id}`" target="_blank" class="flex-1 truncate font-mono text-xs font-medium text-violet-700 hover:underline">{{ frontendById(row.id)?.specId ?? row.id }}</a>
-                    <button type="button" @click="row.id = null; row.search = ''" class="shrink-0 text-slate-400 hover:text-slate-600"><X class="h-3 w-3" /></button>
-                  </div>
-                  <div v-else class="link-search-anchor flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
-                    <Search class="h-3 w-3 shrink-0 text-slate-400" />
-                    <input
-                      v-model="row.search"
-                      class="w-full bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none"
-                      placeholder="Search page…"
-                      autocomplete="off"
-                      @input="openLinkDropdown($event, 'from', i)"
-                      @focus="openLinkDropdown($event, 'from', i)"
-                      @blur="setTimeout(closeLinkDropdown, 150)"
-                    />
-                  </div>
-                </div>
-                <input
-                  v-model="row.note"
-                  class="w-full rounded border border-transparent px-1.5 py-1 text-xs text-slate-700 hover:border-slate-200 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-200"
-                  placeholder="Note / Condition…"
-                />
-                <button v-if="projectStore.canEdit" @click="removeFromLink(i)" class="flex items-center justify-center rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-                  <TrashIcon class="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-            <div v-if="projectStore.canEdit" class="px-4 py-2.5">
-              <button @click="addFromLink" class="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50">
-                <Plus class="h-3.5 w-3.5" />
-                Add From
-              </button>
-            </div>
-          </div>
-
-          <!-- GO TO section -->
-          <div>
-            <div class="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Go To →</div>
-            <div v-if="toLinks.length > 0" class="grid min-w-[480px] grid-cols-[1fr_1fr_32px] gap-2 border-b border-slate-100 bg-slate-50 px-4 py-1.5 text-xs font-medium text-slate-500">
-              <span>Page</span><span>Note / Condition</span><span></span>
-            </div>
-            <div class="divide-y divide-slate-100">
-              <div
-                v-for="(row, i) in toLinks"
-                :key="`to-${i}`"
-                class="grid min-w-[480px] grid-cols-[1fr_1fr_32px] items-center gap-2 px-4 py-2"
-              >
-                <div>
-                  <div v-if="row.id !== null" class="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
-                    <a :href="`/admin/rtmf/frontends/${row.id}`" target="_blank" class="flex-1 truncate font-mono text-xs font-medium text-teal-700 hover:underline">{{ frontendById(row.id)?.specId ?? row.id }}</a>
-                    <button type="button" @click="row.id = null; row.search = ''" class="shrink-0 text-slate-400 hover:text-slate-600"><X class="h-3 w-3" /></button>
-                  </div>
-                  <div v-else class="link-search-anchor flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-1">
-                    <Search class="h-3 w-3 shrink-0 text-slate-400" />
-                    <input
-                      v-model="row.search"
-                      class="w-full bg-transparent text-xs text-slate-700 placeholder-slate-400 focus:outline-none"
-                      placeholder="Search page…"
-                      autocomplete="off"
-                      @input="openLinkDropdown($event, 'to', i)"
-                      @focus="openLinkDropdown($event, 'to', i)"
-                      @blur="setTimeout(closeLinkDropdown, 150)"
-                    />
-                  </div>
-                </div>
-                <input
-                  v-model="row.note"
-                  class="w-full rounded border border-transparent px-1.5 py-1 text-xs text-slate-700 hover:border-slate-200 focus:border-slate-300 focus:outline-none focus:ring-1 focus:ring-slate-200"
-                  placeholder="Note / Condition…"
-                />
-                <button v-if="projectStore.canEdit" @click="removeToLink(i)" class="flex items-center justify-center rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-                  <TrashIcon class="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-            <div v-if="projectStore.canEdit" class="px-4 py-2.5">
-              <button @click="addToLink" class="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50">
-                <Plus class="h-3.5 w-3.5" />
-                Add Go To
-              </button>
-            </div>
-          </div>
-        </template>
       </article>
 
         </div><!-- end left column -->
@@ -1183,7 +1047,7 @@ onMounted(async () => {
                   </div>
                 </div>
                 <button v-if="projectStore.canEdit" @click="removeAttachment(att.id)" class="shrink-0 rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-                  <TrashIcon class="h-3.5 w-3.5" />
+                  <Trash2 class="h-3.5 w-3.5" />
                 </button>
               </div>
               <!-- Upload row -->
@@ -1260,7 +1124,7 @@ onMounted(async () => {
                   @click="removeApiEndpoint(ep.id)"
                   class="flex items-center justify-center rounded p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500"
                 >
-                  <TrashIcon class="h-3.5 w-3.5" />
+                  <Trash2 class="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
@@ -1359,13 +1223,13 @@ onMounted(async () => {
 
           <div class="overflow-x-auto">
             <!-- Header row -->
-            <div v-if="items.length > 0" class="grid min-w-[900px] grid-cols-[24px_44px_180px_1fr_1fr_1fr_1fr_56px_40px] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <div v-if="items.length > 0" class="grid min-w-[900px] grid-cols-[24px_28px_180px_1fr_1fr_1fr_1fr_56px_40px] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               <span></span>
               <span>#</span>
               <span>Type</span>
               <span>Label / Field</span>
               <span>Field Name</span>
-              <span>Note / Condition / Parameter</span>
+              <span>Condition / Page Link</span>
               <span>Validation / Page</span>
               <span class="text-center">Mandatory</span>
               <span></span>
@@ -1379,7 +1243,7 @@ onMounted(async () => {
                 @dragstart="onItemDragStart(index)"
                 @dragover="onItemDragOver"
                 @drop="onItemDrop(index)"
-                class="grid min-w-[900px] grid-cols-[24px_44px_180px_1fr_1fr_1fr_1fr_56px_40px] items-start gap-3 px-5 py-3 transition-colors"
+                class="grid min-w-[900px] grid-cols-[24px_28px_180px_1fr_1fr_1fr_1fr_56px_40px] items-start gap-3 px-5 py-3 transition-colors"
                 :class="dragIndex === index ? 'bg-violet-50 opacity-60' : 'hover:bg-slate-50'"
               >
                 <!-- Drag handle -->
@@ -1389,6 +1253,7 @@ onMounted(async () => {
                 <span class="mt-2 select-none font-mono text-sm font-medium text-slate-400">{{ index + 1 }}</span>
 
                 <!-- Type -->
+                <div class="space-y-0.5">
                 <select
                   v-model="item.type"
                   @change="saveItem(item)"
@@ -1415,6 +1280,8 @@ onMounted(async () => {
                     <option value="Link">Link</option>
                     <option value="Icon">Icon</option>
                     <option value="Tab">Tab</option>
+                    <option value="Component">Component</option>
+                    <option value="Form">Form</option>
                   </optgroup>
                   <optgroup label="Display">
                     <option value="Badge">Badge</option>
@@ -1435,11 +1302,11 @@ onMounted(async () => {
                     <option value="Notification-Web">Web</option>
                   </optgroup>
                   <optgroup label="Other">
-                    <option value="Component">Component</option>
-                    <option value="Form">Form</option>
                     <option value="Integrasi">Integrasi</option>
                   </optgroup>
                 </select>
+                <p class="font-mono text-[10px] text-slate-600">#{{ item.id }}</p>
+                </div>
 
                 <!-- Label / Field -->
                 <input
@@ -1460,10 +1327,12 @@ onMounted(async () => {
                 <!-- Condition -->
                 <textarea
                   v-if="!isActionType(item.type)"
+                  v-auto-resize
                   v-model="item.condition"
                   @blur="saveItem(item)"
                   rows="2"
                   class="w-full resize-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  style="min-height: 3.5rem"
                   placeholder="e.g. status ≠ DRAF"
                 />
                 <!-- Action: condition inputs, one per pair -->
@@ -1486,17 +1355,20 @@ onMounted(async () => {
                 </div>
 
                 <!-- Validation / Page -->
-                <input
+                <textarea
                   v-if="!isActionType(item.type)"
+                  v-auto-resize
                   v-model="item.validation"
                   @blur="saveItem(item)"
-                  class="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  rows="2"
+                  class="w-full resize-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  style="min-height: 3.5rem"
                   placeholder="e.g. Max 255, Email"
                 />
                 <!-- Action: page picker per pair, aligned to condition rows -->
                 <div v-else class="space-y-1">
                   <div v-for="(pair, li) in (conditionLines[item.id] ?? [{ c: '', p: null }])" :key="li" class="relative h-8">
-                    <!-- Selected chip -->
+                    <!-- Selected chip (page found) -->
                     <div
                       v-if="pageForLine(item.id, li)"
                       :title="pageForLine(item.id, li)!.title ?? ''"
@@ -1508,6 +1380,19 @@ onMounted(async () => {
                         type="button"
                         @click="conditionLines[item.id][li].p = null; item.condition = serializeConditionLines(item.id); saveItem(item)"
                         class="flex-shrink-0 text-slate-400 hover:text-rose-500"
+                      ><X class="h-3.5 w-3.5" /></button>
+                    </div>
+                    <!-- Page ID set but allFrontends still loading or page deleted -->
+                    <div
+                      v-else-if="pair.p !== null"
+                      class="flex h-8 items-center gap-1.5 overflow-hidden rounded-md border border-slate-200 bg-slate-50 px-2"
+                    >
+                      <span class="flex-shrink-0 font-mono text-[10px] text-slate-400">{{ linksLoading ? 'Loading…' : `#${pair.p} (not found)` }}</span>
+                      <button
+                        v-if="!linksLoading"
+                        type="button"
+                        @click="conditionLines[item.id][li].p = null; item.condition = serializeConditionLines(item.id); saveItem(item)"
+                        class="flex-shrink-0 text-slate-300 hover:text-rose-500"
                       ><X class="h-3.5 w-3.5" /></button>
                     </div>
                     <!-- Search -->
@@ -1537,7 +1422,7 @@ onMounted(async () => {
                 </div>
 
                 <button v-if="projectStore.canEdit" @click="removeItem(item.id)" class="mt-1 flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
-                  <TrashIcon class="h-4 w-4" />
+                  <Trash2 class="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -1555,6 +1440,189 @@ onMounted(async () => {
         </article>
 
       </div><!-- end mockup tab -->
+
+      <!-- Relations tab (edit mode only) -->
+      <div v-if="isEdit" v-show="activeTab === 'relation'" class="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+          <Share2 class="h-4 w-4 text-violet-600" />
+          <h2 class="text-sm font-semibold text-slate-900">Page Relations</h2>
+          <span class="ml-2 text-xs text-slate-400">Outgoing links defined via action item conditions</span>
+        </div>
+
+        <div v-if="relationNodes.length === 0 && incomingNodes.length === 0" class="py-14 text-center text-sm text-slate-400">
+          No page links yet. Add links by picking a page in the <strong class="font-medium text-slate-600">Condition / Page Link</strong> column for any action item (Button, Link, Icon, Tab, Component, Form).
+        </div>
+
+        <div v-else class="overflow-auto p-4">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            :width="relationDiagram.svgW"
+            :height="relationDiagram.svgH"
+            :viewBox="`0 0 ${relationDiagram.svgW} ${relationDiagram.svgH}`"
+            class="block"
+          >
+            <defs>
+              <marker id="rel-arrow-out" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#a78bfa" />
+              </marker>
+              <marker id="rel-arrow-in" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#0ea5e9" />
+              </marker>
+            </defs>
+
+            <!-- Arrows from each incoming page → current page -->
+            <g v-for="node in relationDiagram.posIncoming" :key="`in-edge-${node.id}`">
+              <path
+                :d="`M ${node.x + relationDiagram.nodeW} ${node.y + relationDiagram.nodeH / 2}
+                     C ${(node.x + relationDiagram.nodeW + relationDiagram.curX) / 2} ${node.y + relationDiagram.nodeH / 2},
+                       ${(node.x + relationDiagram.nodeW + relationDiagram.curX) / 2} ${relationDiagram.curY + relationDiagram.nodeH / 2},
+                       ${relationDiagram.curX} ${relationDiagram.curY + relationDiagram.nodeH / 2}`"
+                fill="none"
+                stroke="#0ea5e9"
+                stroke-width="1.5"
+                marker-end="url(#rel-arrow-in)"
+              />
+              <text
+                v-for="(link, li) in node.links"
+                :key="li"
+                :x="(node.x + relationDiagram.nodeW + relationDiagram.curX) / 2"
+                :y="((node.y + relationDiagram.nodeH / 2 + relationDiagram.curY + relationDiagram.nodeH / 2) / 2) - (node.links.length - 1) * 8 + li * 16"
+                text-anchor="middle"
+                font-size="10"
+                font-family="sans-serif"
+                fill="#0369a1"
+              >{{ link.type ?? 'Item' }} #{{ link.itemId }}</text>
+            </g>
+
+            <!-- Arrows from current page → each outgoing page -->
+            <g v-for="node in relationDiagram.posOutgoing" :key="`out-edge-${node.id}`">
+              <path
+                :d="`M ${relationDiagram.curX + relationDiagram.nodeW} ${relationDiagram.curY + relationDiagram.nodeH / 2}
+                     C ${(relationDiagram.curX + relationDiagram.nodeW + node.x) / 2} ${relationDiagram.curY + relationDiagram.nodeH / 2},
+                       ${(relationDiagram.curX + relationDiagram.nodeW + node.x) / 2} ${node.y + relationDiagram.nodeH / 2},
+                       ${node.x} ${node.y + relationDiagram.nodeH / 2}`"
+                fill="none"
+                stroke="#a78bfa"
+                stroke-width="1.5"
+                marker-end="url(#rel-arrow-out)"
+              />
+              <text
+                v-for="(link, li) in node.links"
+                :key="li"
+                :x="(relationDiagram.curX + relationDiagram.nodeW + node.x) / 2"
+                :y="((relationDiagram.curY + relationDiagram.nodeH / 2 + node.y + relationDiagram.nodeH / 2) / 2) - (node.links.length - 1) * 8 + li * 16"
+                text-anchor="middle"
+                font-size="10"
+                font-family="sans-serif"
+                fill="#7c3aed"
+              >{{ link.itemLabel }}{{ link.condition ? ` · ${link.condition}` : '' }}</text>
+            </g>
+
+            <!-- Incoming page nodes (left, sky/teal) -->
+            <a
+              v-for="node in relationDiagram.posIncoming"
+              :key="`in-node-${node.id}`"
+              :href="`/admin/rtmf/frontends/${node.id}`"
+              target="_blank"
+            >
+              <rect
+                :x="node.x"
+                :y="node.y"
+                :width="relationDiagram.nodeW"
+                :height="relationDiagram.nodeH"
+                rx="6"
+                fill="#e0f2fe"
+                stroke="#38bdf8"
+                stroke-width="1.5"
+                class="cursor-pointer hover:fill-sky-200"
+              />
+              <text
+                :x="node.x + relationDiagram.nodeW / 2"
+                :y="node.y + 20"
+                text-anchor="middle"
+                font-size="12"
+                font-family="monospace"
+                fill="#0369a1"
+                font-weight="600"
+              >{{ node.specId }}</text>
+              <text
+                :x="node.x + relationDiagram.nodeW / 2"
+                :y="node.y + 37"
+                text-anchor="middle"
+                font-size="11"
+                font-family="sans-serif"
+                fill="#0284c7"
+              ><tspan>{{ node.title.length > 22 ? node.title.slice(0, 20) + '…' : node.title }}</tspan></text>
+            </a>
+
+            <!-- Current page node (center, dark) -->
+            <rect
+              :x="relationDiagram.curX"
+              :y="relationDiagram.curY"
+              :width="relationDiagram.nodeW"
+              :height="relationDiagram.nodeH"
+              rx="6"
+              fill="#1e293b"
+              stroke="#334155"
+              stroke-width="1.5"
+            />
+            <text
+              :x="relationDiagram.curX + relationDiagram.nodeW / 2"
+              :y="relationDiagram.curY + 20"
+              text-anchor="middle"
+              font-size="12"
+              font-family="monospace"
+              fill="#e2e8f0"
+              font-weight="600"
+            >{{ specId }}</text>
+            <text
+              :x="relationDiagram.curX + relationDiagram.nodeW / 2"
+              :y="relationDiagram.curY + 37"
+              text-anchor="middle"
+              font-size="11"
+              font-family="sans-serif"
+              fill="#94a3b8"
+            ><tspan>{{ title.length > 22 ? title.slice(0, 20) + '…' : title }}</tspan></text>
+
+            <!-- Outgoing page nodes (right, violet) -->
+            <a
+              v-for="node in relationDiagram.posOutgoing"
+              :key="`out-node-${node.id}`"
+              :href="`/admin/rtmf/frontends/${node.id}`"
+              target="_blank"
+            >
+              <rect
+                :x="node.x"
+                :y="node.y"
+                :width="relationDiagram.nodeW"
+                :height="relationDiagram.nodeH"
+                rx="6"
+                fill="#ede9fe"
+                stroke="#a78bfa"
+                stroke-width="1.5"
+                class="cursor-pointer hover:fill-violet-200"
+              />
+              <text
+                :x="node.x + relationDiagram.nodeW / 2"
+                :y="node.y + 20"
+                text-anchor="middle"
+                font-size="12"
+                font-family="monospace"
+                fill="#6d28d9"
+                font-weight="600"
+              >{{ node.specId }}</text>
+              <text
+                :x="node.x + relationDiagram.nodeW / 2"
+                :y="node.y + 37"
+                text-anchor="middle"
+                font-size="11"
+                font-family="sans-serif"
+                fill="#7c3aed"
+              ><tspan>{{ node.title.length > 22 ? node.title.slice(0, 20) + '…' : node.title }}</tspan></text>
+            </a>
+          </svg>
+        </div>
+      </div>
 
       <!-- Scenario (edit mode only) -->
       <article v-if="isEdit" v-show="activeTab === 'scenario'" class="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -1589,7 +1657,7 @@ onMounted(async () => {
                 class="mt-1 flex items-center justify-center rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                 title="Delete group"
               >
-                <TrashIcon class="h-4 w-4" />
+                <Trash2 class="h-4 w-4" />
               </button>
             </div>
 
@@ -1640,7 +1708,7 @@ onMounted(async () => {
                     @click="removeScenarioRow(group, row.id)"
                     class="mt-1 flex items-center justify-center rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
                   >
-                    <TrashIcon class="h-3.5 w-3.5" />
+                    <Trash2 class="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -1698,13 +1766,13 @@ onMounted(async () => {
                     'focus:outline-none focus:ring-2 focus:ring-violet-100 cursor-pointer': canEditFeedbackRow(roleDef.key),
                     'cursor-not-allowed': !canEditFeedbackRow(roleDef.key),
                     'border-slate-200 bg-slate-50 text-slate-500': feedbackFor(roleDef.key).status === 'open',
-                    'border-blue-200 bg-blue-50 text-blue-700': feedbackFor(roleDef.key).status === 'reviewed',
+                    'border-amber-200 bg-amber-50 text-amber-700': feedbackFor(roleDef.key).status === 'reviewed',
                     'border-emerald-200 bg-emerald-50 text-emerald-700': feedbackFor(roleDef.key).status === 'approved',
                   }"
                 >
                   <option value="open">Open</option>
-                  <option value="reviewed">Reviewed</option>
-                  <option value="approved">Approved</option>
+                  <option value="reviewed">In Progress</option>
+                  <option value="approved">Closed</option>
                 </select>
                 <textarea
                   :value="feedbackFor(roleDef.key).comment ?? ''"
@@ -1724,201 +1792,24 @@ onMounted(async () => {
         </div>
       </article>
 
-      <div v-if="projectStore.canEdit" class="flex items-center gap-3">
-        <button class="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800" @click="save">
-          <Save class="h-4 w-4" />
-          {{ isEdit ? 'Update Frontend' : 'Create Frontend' }}
-        </button>
+      <div class="flex items-center gap-3">
+        <template v-if="projectStore.canEdit">
+          <button class="flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-800" @click="save">
+            <Save class="h-4 w-4" />
+            {{ isEdit ? 'Update Frontend' : 'Create Frontend' }}
+          </button>
+        </template>
         <button class="flex items-center gap-2 rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50" @click="router.push('/admin/rtmf/frontends')">
           <X class="h-4 w-4" />
-          Cancel
+          {{ projectStore.canEdit ? 'Cancel' : 'Back to List' }}
         </button>
-        <button v-if="isEdit" class="ml-auto flex items-center gap-2 rounded-lg border border-rose-200 px-5 py-2.5 text-sm font-medium text-rose-600 shadow-sm transition-colors hover:bg-rose-50" @click="remove">
+        <button v-if="isEdit && projectStore.canEdit" class="ml-auto flex items-center gap-2 rounded-lg border border-rose-200 px-5 py-2.5 text-sm font-medium text-rose-600 shadow-sm transition-colors hover:bg-rose-50" @click="remove">
           <Trash2 class="h-4 w-4" />
           Delete
         </button>
       </div>
     </div>
   </AdminLayout>
-
-  <!-- Relation diagram modal -->
-  <Teleport to="body">
-    <div
-      v-if="showDiagram"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      @click.self="showDiagram = false"
-    >
-      <div class="w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-2xl">
-        <div class="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
-          <Network class="h-4 w-4 text-violet-600" />
-          <h2 class="text-sm font-semibold text-slate-900">Relation Diagram</h2>
-          <span class="ml-2 text-xs text-slate-400">{{ specId }}</span>
-          <button
-            type="button"
-            @click="showDiagram = false"
-            class="ml-auto flex items-center justify-center rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X class="h-4 w-4" />
-          </button>
-        </div>
-        <div class="overflow-auto p-4">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="560"
-            :height="diagram.svgH"
-            :viewBox="`0 0 560 ${diagram.svgH}`"
-            class="mx-auto block"
-          >
-            <!-- Edges: from nodes → current -->
-            <path
-              v-for="n in diagram.fromNodes"
-              :key="`edge-from-${n.id}`"
-              :d="`M ${n.x + diagram.nodeW} ${n.y + diagram.nodeH / 2}
-                   C ${(n.x + diagram.nodeW + diagram.curX) / 2} ${n.y + diagram.nodeH / 2},
-                     ${(n.x + diagram.nodeW + diagram.curX) / 2} ${diagram.curY + diagram.nodeH / 2},
-                     ${diagram.curX} ${diagram.curY + diagram.nodeH / 2}`"
-              fill="none"
-              stroke="#a78bfa"
-              stroke-width="1.5"
-              marker-end="url(#arrow-violet)"
-            />
-            <!-- Edges: current → to nodes -->
-            <path
-              v-for="n in diagram.toNodes"
-              :key="`edge-to-${n.id}`"
-              :d="`M ${diagram.curX + diagram.nodeW} ${diagram.curY + diagram.nodeH / 2}
-                   C ${(diagram.curX + diagram.nodeW + n.x) / 2} ${diagram.curY + diagram.nodeH / 2},
-                     ${(diagram.curX + diagram.nodeW + n.x) / 2} ${n.y + diagram.nodeH / 2},
-                     ${n.x} ${n.y + diagram.nodeH / 2}`"
-              fill="none"
-              stroke="#2dd4bf"
-              stroke-width="1.5"
-              marker-end="url(#arrow-teal)"
-            />
-
-            <!-- From nodes -->
-            <a
-              v-for="n in diagram.fromNodes"
-              :key="`node-from-${n.id}`"
-              :href="`/admin/rtmf/frontends/${n.id}`"
-              target="_blank"
-            >
-              <rect
-                :x="n.x" :y="n.y"
-                :width="diagram.nodeW" :height="diagram.nodeH"
-                rx="6"
-                fill="#ede9fe"
-                stroke="#a78bfa"
-                stroke-width="1.5"
-                class="cursor-pointer hover:fill-violet-200"
-              />
-              <text
-                :x="n.x + diagram.nodeW / 2"
-                :y="n.y + 20"
-                text-anchor="middle"
-                font-size="13"
-                font-family="monospace"
-                fill="#6d28d9"
-                font-weight="600"
-              >{{ n.specId }}</text>
-              <text
-                :x="n.x + diagram.nodeW / 2"
-                :y="n.y + 39"
-                text-anchor="middle"
-                font-size="12"
-                font-family="sans-serif"
-                fill="#7c3aed"
-              >
-                <tspan>{{ n.title.length > 20 ? n.title.slice(0, 18) + '…' : n.title }}</tspan>
-              </text>
-            </a>
-
-            <!-- Current node -->
-            <rect
-              :x="diagram.curX" :y="diagram.curY"
-              :width="diagram.nodeW" :height="diagram.nodeH"
-              rx="6"
-              fill="#1e293b"
-              stroke="#334155"
-              stroke-width="1.5"
-            />
-            <text
-              :x="diagram.curX + diagram.nodeW / 2"
-              :y="diagram.curY + 20"
-              text-anchor="middle"
-              font-size="13"
-              font-family="monospace"
-              fill="#e2e8f0"
-              font-weight="600"
-            >{{ specId }}</text>
-            <text
-              :x="diagram.curX + diagram.nodeW / 2"
-              :y="diagram.curY + 39"
-              text-anchor="middle"
-              font-size="12"
-              font-family="sans-serif"
-              fill="#94a3b8"
-            >
-              <tspan>{{ title.length > 20 ? title.slice(0, 18) + '…' : title }}</tspan>
-            </text>
-
-            <!-- To nodes -->
-            <a
-              v-for="n in diagram.toNodes"
-              :key="`node-to-${n.id}`"
-              :href="`/admin/rtmf/frontends/${n.id}`"
-              target="_blank"
-            >
-              <rect
-                :x="n.x" :y="n.y"
-                :width="diagram.nodeW" :height="diagram.nodeH"
-                rx="6"
-                fill="#ccfbf1"
-                stroke="#2dd4bf"
-                stroke-width="1.5"
-                class="cursor-pointer hover:fill-teal-200"
-              />
-              <text
-                :x="n.x + diagram.nodeW / 2"
-                :y="n.y + 20"
-                text-anchor="middle"
-                font-size="13"
-                font-family="monospace"
-                fill="#0f766e"
-                font-weight="600"
-              >{{ n.specId }}</text>
-              <text
-                :x="n.x + diagram.nodeW / 2"
-                :y="n.y + 39"
-                text-anchor="middle"
-                font-size="12"
-                font-family="sans-serif"
-                fill="#0d9488"
-              >
-                <tspan>{{ n.title.length > 20 ? n.title.slice(0, 18) + '…' : n.title }}</tspan>
-              </text>
-            </a>
-
-            <!-- Arrow marker definitions -->
-            <defs>
-              <marker id="arrow-violet" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L8,3 z" fill="#a78bfa" />
-              </marker>
-              <marker id="arrow-teal" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-                <path d="M0,0 L0,6 L8,3 z" fill="#2dd4bf" />
-              </marker>
-            </defs>
-          </svg>
-
-          <div class="mt-3 flex items-center justify-center gap-6 text-xs text-slate-500">
-            <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-sm bg-violet-200 ring-1 ring-violet-400"></span> From (navigates here)</span>
-            <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-sm bg-slate-800 ring-1 ring-slate-600"></span> This page</span>
-            <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-sm bg-teal-100 ring-1 ring-teal-400"></span> Go To (navigated from here)</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 
   <!-- Condition page search dropdown — teleported to body to escape stacking contexts -->
   <Teleport to="body">
@@ -1932,7 +1823,7 @@ onMounted(async () => {
         v-for="f in pagesForLine(condDropdown.itemId, condDropdown.li)"
         :key="f.id"
         :title="f.title ?? ''"
-        @mousedown.prevent="conditionLines[condDropdown.itemId][condDropdown.li].p = f.id; conditionPageSearch[`${condDropdown.itemId}_${condDropdown.li}`] = ''; closeCondDropdown()"
+        @mousedown.prevent="selectCondPage(condDropdown.itemId, condDropdown.li, f.id)"
         class="flex cursor-pointer items-center gap-1.5 px-2.5 py-1.5 hover:bg-violet-50"
       >
         <span class="flex-shrink-0 font-mono text-[10px] text-slate-500">{{ f.specId }}</span>
@@ -1942,40 +1833,4 @@ onMounted(async () => {
     </div>
   </Teleport>
 
-  <!-- Link search dropdown — teleported to body to escape stacking contexts -->
-  <Teleport to="body">
-    <div
-      v-if="linkDropdown && (linkDropdown.type === 'from' ? fromLinks[linkDropdown.index]?.search : toLinks[linkDropdown.index]?.search)"
-      class="fixed z-[9999] max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg"
-      :style="{ top: `${linkDropdown.y + 2}px`, left: `${linkDropdown.x}px`, width: `${linkDropdown.width}px` }"
-      @mousedown.prevent
-    >
-      <template v-if="linkDropdown.type === 'from'">
-        <button
-          v-for="f in fromAvailable(null, fromLinks[linkDropdown.index]?.search ?? '')"
-          :key="f.id"
-          type="button"
-          @click="fromLinks[linkDropdown.index].id = f.id; fromLinks[linkDropdown.index].search = ''; closeLinkDropdown()"
-          class="block w-full px-2.5 py-2 text-left hover:bg-violet-50"
-        >
-          <span class="block truncate font-mono text-xs font-medium text-slate-800">{{ f.specId }}</span>
-          <span class="block truncate text-xs text-slate-400">{{ f.title }}</span>
-        </button>
-        <p v-if="!fromAvailable(null, fromLinks[linkDropdown.index]?.search ?? '').length" class="px-2.5 py-2 text-xs text-slate-400">No match.</p>
-      </template>
-      <template v-else>
-        <button
-          v-for="f in toAvailable(null, toLinks[linkDropdown.index]?.search ?? '')"
-          :key="f.id"
-          type="button"
-          @click="toLinks[linkDropdown.index].id = f.id; toLinks[linkDropdown.index].search = ''; closeLinkDropdown()"
-          class="block w-full px-2.5 py-2 text-left hover:bg-teal-50"
-        >
-          <span class="block truncate font-mono text-xs font-medium text-slate-800">{{ f.specId }}</span>
-          <span class="block truncate text-xs text-slate-400">{{ f.title }}</span>
-        </button>
-        <p v-if="!toAvailable(null, toLinks[linkDropdown.index]?.search ?? '').length" class="px-2.5 py-2 text-xs text-slate-400">No match.</p>
-      </template>
-    </div>
-  </Teleport>
 </template>

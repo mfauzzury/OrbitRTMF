@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, useRouter } from "vue-router";
-import { ChevronLeft, ChevronRight, GitMerge, LayoutGrid, Plus, Search } from "lucide-vue-next";
+import { ChevronLeft, ChevronRight, LayoutGrid, Plus, Search } from "lucide-vue-next";
 
 import AdminLayout from "@/layouts/AdminLayout.vue";
 import { listRtmfFrontends, listRtmfModules } from "@/api/rtmf";
@@ -77,32 +77,6 @@ onMounted(async () => {
   await load();
 });
 
-// ── Page links popover ──
-type PopoverState = { item: RtmfFrontend; x: number; y: number } | null;
-const popover = ref<PopoverState>(null);
-
-const POPOVER_W = 288; // w-72
-
-function openLinksPopover(e: MouseEvent, item: RtmfFrontend) {
-  e.stopPropagation();
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  const spaceOnRight = window.innerWidth - rect.left;
-  const x = spaceOnRight >= POPOVER_W
-    ? rect.left + window.scrollX
-    : rect.right + window.scrollX - POPOVER_W;
-  popover.value = {
-    item,
-    x,
-    y: rect.bottom + window.scrollY + 6,
-  };
-}
-
-function closePopover() {
-  popover.value = null;
-}
-
-onMounted(() => document.addEventListener("click", closePopover));
-onUnmounted(() => document.removeEventListener("click", closePopover));
 </script>
 
 <template>
@@ -183,7 +157,6 @@ onUnmounted(() => document.removeEventListener("click", closePopover));
                 <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-amber-500">Tech</th>
                 <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-green-600">Dev</th>
                 <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Assigned</th>
-                <th class="whitespace-nowrap px-3 py-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">Links</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -225,11 +198,11 @@ onUnmounted(() => document.removeEventListener("click", closePopover));
                   @click.stop
                 >
                   <span
-                    :title="(item.feedbacks?.find(f => f.role === role)?. status ?? 'open')"
+                    :title="({ open: 'Open', reviewed: 'In Progress', approved: 'Closed' }[item.feedbacks?.find(f => f.role === role)?.status ?? 'open'] ?? 'Open')"
                     class="inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold"
                     :class="{
                       'bg-emerald-100 text-emerald-600': item.feedbacks?.find(f => f.role === role)?.status === 'approved',
-                      'bg-blue-100 text-blue-600':       item.feedbacks?.find(f => f.role === role)?.status === 'reviewed',
+                      'bg-amber-100 text-amber-600':     item.feedbacks?.find(f => f.role === role)?.status === 'reviewed',
                       'bg-slate-100 text-slate-300':     !item.feedbacks?.find(f => f.role === role) || item.feedbacks?.find(f => f.role === role)?.status === 'open',
                     }"
                   >
@@ -273,23 +246,9 @@ onUnmounted(() => document.removeEventListener("click", closePopover));
                   </div>
                 </td>
 
-                <!-- Links icon -->
-                <td class="whitespace-nowrap px-3 py-2 text-center">
-                  <button
-                    v-if="(item.linksFrom?.length || 0) + (item.linksTo?.length || 0) > 0"
-                    class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-violet-600 transition-colors hover:bg-violet-50"
-                    @click.stop="openLinksPopover($event, item)"
-                  >
-                    <GitMerge class="h-3.5 w-3.5" />
-                    <span class="text-xs font-medium">{{ (item.linksFrom?.length || 0) + (item.linksTo?.length || 0) }}</span>
-                  </button>
-                  <span v-else class="text-slate-300">
-                    <GitMerge class="h-3.5 w-3.5" />
-                  </span>
-                </td>
               </tr>
               <tr v-if="rows.length === 0">
-                <td colspan="10" class="px-4 py-6 text-center text-sm text-slate-400">No frontend entries found.</td>
+                <td colspan="9" class="px-4 py-6 text-center text-sm text-slate-400">No frontend entries found.</td>
               </tr>
             </tbody>
           </table>
@@ -328,51 +287,4 @@ onUnmounted(() => document.removeEventListener("click", closePopover));
     </div>
   </AdminLayout>
 
-  <!-- Page links popover -->
-  <Teleport to="body">
-    <div
-      v-if="popover"
-      class="fixed z-50 w-72 rounded-xl border border-slate-200 bg-white shadow-xl"
-      :style="{ top: `${popover.y}px`, left: `${popover.x}px` }"
-      @click.stop
-    >
-      <div class="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
-        <GitMerge class="h-4 w-4 text-violet-600" />
-        <span class="text-sm font-semibold text-slate-800">Page Links</span>
-        <span class="ml-1 font-mono text-xs text-slate-400">{{ popover.item.specId }}</span>
-      </div>
-
-      <!-- From -->
-      <div v-if="popover.item.linksFrom?.length" class="border-b border-slate-100">
-        <p class="bg-slate-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">← From</p>
-        <ul class="divide-y divide-slate-50">
-          <li
-            v-for="lk in popover.item.linksFrom"
-            :key="lk.id"
-            class="flex cursor-pointer items-center gap-2 px-4 py-2 hover:bg-violet-50"
-            @click="router.push(`/admin/rtmf/frontends/${lk.id}`); closePopover()"
-          >
-            <span class="shrink-0 font-mono text-xs font-medium text-violet-700">{{ lk.specId }}</span>
-            <span class="truncate text-xs text-slate-500">{{ lk.title }}</span>
-          </li>
-        </ul>
-      </div>
-
-      <!-- Go To -->
-      <div v-if="popover.item.linksTo?.length">
-        <p class="bg-slate-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Go To →</p>
-        <ul class="divide-y divide-slate-50">
-          <li
-            v-for="lk in popover.item.linksTo"
-            :key="lk.id"
-            class="flex cursor-pointer items-center gap-2 px-4 py-2 hover:bg-teal-50"
-            @click="router.push(`/admin/rtmf/frontends/${lk.id}`); closePopover()"
-          >
-            <span class="shrink-0 font-mono text-xs font-medium text-teal-700">{{ lk.specId }}</span>
-            <span class="truncate text-xs text-slate-500">{{ lk.title }}</span>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </Teleport>
 </template>
