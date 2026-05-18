@@ -54,9 +54,10 @@ export async function fetchRtmfByAssignee(params = "") {
 }
 
 // ── Frontends ──
-export async function listRtmfFrontends(params = "") {
+export async function listRtmfFrontends(params = "", init: RequestInit = {}) {
   return apiRequest<{ data: RtmfFrontend[]; meta: Record<string, unknown> }>(
     `/api/rtmf-frontends${params}`,
+    init,
   );
 }
 

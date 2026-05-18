@@ -25,8 +25,21 @@ class RtmfFrontendController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $page = (int) $request->input('page', 1);
-        $limit = (int) $request->input('limit', 25);
+        // Headers / page_num survive some proxies that drop or cache the "page" query param
+        $page = max(1, (int) (
+            $request->header('X-Page-Num')
+            ?? $request->query('page_num')
+            ?? $request->query('page')
+            ?? $request->input('page_num')
+            ?? $request->input('page')
+            ?? 1
+        ));
+        $limit = max(1, min(100, (int) (
+            $request->header('X-Limit')
+            ?? $request->query('limit')
+            ?? $request->input('limit')
+            ?? 25
+        )));
         $q = $request->input('q');
         $moduleId = $request->input('module_id');
         $tabCode = $request->input('tab_code');

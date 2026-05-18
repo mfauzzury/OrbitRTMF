@@ -11,10 +11,9 @@ class CamelCaseMiddleware
 {
     public function handle(Request $request, Closure $next)
     {
-        // Convert incoming camelCase keys to snake_case
-        if ($request->isJson() || $request->wantsJson()) {
-            $input = $request->all();
-            $request->replace($this->convertKeysToSnakeCase($input));
+        // JSON body only — do not replace() on GET query bags (breaks pagination under Accept: application/json)
+        if ($request->isJson()) {
+            $request->merge($this->convertKeysToSnakeCase($request->json()->all()));
         }
 
         $response = $next($request);
@@ -23,6 +22,7 @@ class CamelCaseMiddleware
         if ($request->isMethod('GET')) {
             $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
             $response->headers->set('Pragma', 'no-cache');
+            $response->headers->set('Vary', 'Accept, Cookie');
         }
 
         // Convert outgoing snake_case keys to camelCase
