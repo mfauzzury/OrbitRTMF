@@ -61,6 +61,12 @@ export async function listRtmfFrontends(params = "", init: RequestInit = {}) {
   );
 }
 
+export async function listRtmfFrontendAssignees(params = "") {
+  return apiRequest<{ data: { assigneeId: number | null; source: string; name: string; photoUrl: string | null }[] }>(
+    `/api/rtmf-frontends/assignee-list${params}`,
+  );
+}
+
 export async function getRtmfFrontend(id: number) {
   return apiRequest<{ data: RtmfFrontend }>(`/api/rtmf-frontends/${id}`);
 }
@@ -430,7 +436,7 @@ export async function createRtmfScenario(input: RtmfScenarioInput) {
 
 export async function updateRtmfScenario(id: number, input: Partial<RtmfScenarioInput>) {
   return apiRequest<{ data: RtmfScenario }>(`/api/rtmf-scenarios/${id}`, {
-    method: "PUT",
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }

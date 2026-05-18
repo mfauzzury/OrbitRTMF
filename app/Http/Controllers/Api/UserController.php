@@ -144,7 +144,7 @@ class UserController extends Controller
                 'name' => $u->name,
                 'email' => $u->email,
                 'role' => $u->role,
-                'avatarUrl' => $u->avatarUrl ?? null,
+                'photo_url' => $u->avatarUrl ?? null,
                 'createdAt' => $u->createdAt,
                 'updatedAt' => $u->updatedAt,
             ]);

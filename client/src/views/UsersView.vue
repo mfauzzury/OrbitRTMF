@@ -206,7 +206,7 @@ onMounted(load);
               <tr v-for="user in pagedExtUsers" :key="user.id" class="transition-colors hover:bg-slate-50">
                 <td class="px-4 py-2">
                   <div class="flex items-center gap-2.5">
-                    <img v-if="user.avatarUrl" :src="user.avatarUrl" class="h-7 w-7 shrink-0 rounded-full object-cover" />
+                    <img v-if="user.photoUrl" :src="user.photoUrl" class="h-7 w-7 shrink-0 rounded-full object-cover" />
                     <div v-else class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-semibold text-amber-700">
                       {{ user.name.charAt(0).toUpperCase() }}
                     </div>

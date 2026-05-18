@@ -43,8 +43,12 @@ class RtmfFrontendController extends Controller
         $q = $request->input('q');
         $moduleId = $request->input('module_id');
         $tabCode = $request->input('tab_code');
-        $isDone = $request->input('is_done');
-        $sortBy = $request->input('sort_by', 'spec_id');
+        $isDone         = $request->input('is_done');
+        $assigneeId       = $request->input('assignee_id');
+        $assigneeSource   = $request->input('assignee_source', 'local');
+        $assigneeName     = $request->input('assignee_name');
+        $assigneeUnassigned = $request->boolean('assignee_unassigned');
+        $sortBy         = $request->input('sort_by', 'spec_id');
         $sortDir = $request->input('sort_dir', 'asc');
 
         $allowedSort = ['spec_id', 'title', 'module_id', 'created_at', 'updated_at'];
@@ -75,6 +79,17 @@ class RtmfFrontendController extends Controller
 
         if ($isDone !== null && $isDone !== '') {
             $query->where('is_done', filter_var($isDone, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        if ($assigneeUnassigned) {
+            $query->where(function ($b) {
+                $b->whereNull('assignees')
+                  ->orWhereRaw("assignees::jsonb = '[]'::jsonb");
+            });
+        } elseif ($assigneeId) {
+            $query->whereRaw("assignees::jsonb @> ?::jsonb", [json_encode([['id' => (int) $assigneeId, 'source' => $assigneeSource]])]);
+        } elseif ($assigneeName) {
+            $query->whereRaw("assignees::jsonb @> ?::jsonb", [json_encode([['name' => $assigneeName]])]);
         }
 
         if ($q) {
@@ -117,6 +132,69 @@ class RtmfFrontendController extends Controller
         return $this->sendOk($row);
     }
 
+    public function assigneeList(Request $request): JsonResponse
+    {
+        $projectId = $request->integer('project_id') ?: null;
+
+        $query = RtmfFrontend::query()
+            ->whereNotNull('assignees')
+            ->whereRaw("assignees::jsonb != '[]'::jsonb");
+
+        if ($projectId) {
+            $query->whereHas('module', fn ($q) => $q->where('project_id', $projectId));
+        }
+
+        $seen = [];
+        $result = [];
+
+        foreach ($query->pluck('assignees') as $assignees) {
+            if (!is_array($assignees)) continue;
+            foreach ($assignees as $a) {
+                $name   = $a['name']   ?? null;
+                $source = $a['source'] ?? 'local';
+                $id     = $a['id']     ?? null;
+                if (!$name) continue;
+                $key = $id ? "{$source}:{$id}" : strtolower($name);
+                if (isset($seen[$key])) continue;
+                $seen[$key] = true;
+                $result[] = [
+                    'assigneeId'  => $id,
+                    'source'      => $source,
+                    'name'        => $name,
+                    'photoUrl'    => $a['photo_url'] ?? null,
+                ];
+            }
+        }
+
+        usort($result, fn ($a, $b) => strcmp($a['name'], $b['name']));
+
+        // Enrich with live photo URLs
+        $localIds    = array_filter(array_column(array_filter($result, fn ($r) => ($r['source'] ?? 'local') === 'local'), 'assigneeId'));
+        $externalIds = array_filter(array_column(array_filter($result, fn ($r) => ($r['source'] ?? '') === 'external'), 'assigneeId'));
+
+        $localPhotos = !empty($localIds)
+            ? \App\Models\User::whereIn('id', $localIds)->pluck('photo_url', 'id')->map(fn ($p) => $p ? url($p) : null)->toArray()
+            : [];
+
+        $externalPhotos = [];
+        if (!empty($externalIds)) {
+            try {
+                $externalPhotos = \Illuminate\Support\Facades\DB::connection('mysql_external')
+                    ->table('User')->whereIn('id', $externalIds)->pluck('avatarUrl', 'id')->toArray();
+            } catch (\Throwable) {}
+        }
+
+        $result = array_map(function ($r) use ($localPhotos, $externalPhotos) {
+            $source = $r['source'] ?? 'local';
+            $r['photoUrl'] = $source === 'external'
+                ? ($externalPhotos[$r['assigneeId']] ?? null)
+                : ($localPhotos[$r['assigneeId']] ?? null);
+            return $r;
+        }, $result);
+
+        return $this->sendOk($result);
+    }
+
     public function duplicate(Request $request, int $id): JsonResponse
     {
         $source = RtmfFrontend::with(['actors', 'scenarioGroups.rows'])->find($id);
@@ -127,8 +205,16 @@ class RtmfFrontendController extends Controller
         $module = RtmfModule::find($source->module_id);
         if ($deny = $this->denyIfCannotEdit($request, $module?->project_id)) return $deny;
 
+        $baseSpecId = preg_replace('/_COPY(_\d+)?$/', '', $source->spec_id);
+        $baseTitle  = preg_replace('/ \(\d+\)$/', '', $source->title);
+
+        $existingCount = RtmfFrontend::withTrashed()->where('spec_id', 'like', $baseSpecId . '_COPY%')->count();
+        $copySpecId = $existingCount === 0
+            ? $baseSpecId . '_COPY'
+            : $baseSpecId . '_COPY_' . ($existingCount + 1);
+
         $copy = RtmfFrontend::create([
-            'spec_id'                 => $source->spec_id . '_COPY',
+            'spec_id'                 => $copySpecId,
             'module_id'               => $source->module_id,
             'sub_module_id'           => $source->sub_module_id,
             'tab_code'                => $source->tab_code,
@@ -136,7 +222,7 @@ class RtmfFrontendController extends Controller
             'url_dev'                 => $source->url_dev,
             'url_stg'                 => $source->url_stg,
             'url_prd'                 => $source->url_prd,
-            'title'                   => $source->title . ' (1)',
+            'title'                   => $baseTitle . ' (' . ($existingCount + 1) . ')',
             'business_requirement'    => $source->business_requirement,
             'stakeholder_requirement' => $source->stakeholder_requirement,
             'description'             => $source->description,
@@ -145,6 +231,22 @@ class RtmfFrontendController extends Controller
         ]);
 
         $copy->actors()->sync($source->actors->pluck('id'));
+
+        foreach (RtmfFrontendItem::where('rtmf_frontend_id', $source->id)->orderBy('sort_order')->get() as $item) {
+            RtmfFrontendItem::create([
+                'rtmf_frontend_id' => $copy->id,
+                'id_fr'            => $item->id_fr,
+                'type'             => $item->type,
+                'label'            => $item->label,
+                'condition'        => $item->condition,
+                'validation'       => $item->validation,
+                'mandatory'        => $item->mandatory,
+                'screen_name'      => $item->screen_name,
+                'table_fieldname'  => $item->table_fieldname,
+                'status'           => $item->status,
+                'sort_order'       => $item->sort_order,
+            ]);
+        }
 
         foreach ($source->scenarioGroups as $group) {
             $newGroup = $copy->scenarioGroups()->create([
@@ -529,5 +631,85 @@ class RtmfFrontendController extends Controller
             'sub_module' => "{$subModule->code} — {$subModule->name}",
             'frontends'  => $results,
         ]);
+    }
+
+    private function enrichAssigneePhotos(\Illuminate\Database\Eloquent\Collection $rows): void
+    {
+        $localIds    = [];
+        $externalIds = [];
+
+        foreach ($rows as $row) {
+            foreach ((array) $row->assignees as $a) {
+                $source = $a['source'] ?? 'local';
+                if ($source === 'local' && isset($a['id'])) {
+                    $localIds[] = (int) $a['id'];
+                } elseif ($source === 'external' && isset($a['id'])) {
+                    $externalIds[] = $a['id'];
+                }
+            }
+        }
+
+        // Local: get photo_url; collect emails of those with null photo for testagent fallback
+        $localUsers     = [];
+        $emailsToLookup = [];
+
+        if (!empty($localIds)) {
+            $localUsers = \App\Models\User::whereIn('id', array_unique($localIds))
+                ->get(['id', 'email', 'photo_url'])
+                ->keyBy('id');
+
+            foreach ($localUsers as $user) {
+                if (!$user->photo_url) {
+                    $emailsToLookup[] = $user->email;
+                }
+            }
+        }
+
+        // Testagent: fetch by external IDs + emails of local users missing a photo
+        $externalPhotoById    = [];
+        $externalPhotoByEmail = [];
+
+        try {
+            $query = \Illuminate\Support\Facades\DB::connection('mysql_external')->table('User');
+
+            if (!empty($externalIds) || !empty($emailsToLookup)) {
+                $rows2 = $query->where(function ($q) use ($externalIds, $emailsToLookup) {
+                    if (!empty($externalIds))   $q->orWhereIn('id', array_unique($externalIds));
+                    if (!empty($emailsToLookup)) $q->orWhereIn('email', array_unique($emailsToLookup));
+                })->get(['id', 'email', 'avatarUrl']);
+
+                foreach ($rows2 as $u) {
+                    $externalPhotoById[$u->id]       = $u->avatarUrl;
+                    $externalPhotoByEmail[$u->email] = $u->avatarUrl;
+                }
+            }
+        } catch (\Throwable) {
+            // testagent unavailable — skip
+        }
+
+        foreach ($rows as $row) {
+            $assignees = (array) $row->assignees;
+            if (empty($assignees)) continue;
+
+            $updated = array_map(function ($a) use ($localUsers, $externalPhotoById, $externalPhotoByEmail) {
+                $source = $a['source'] ?? 'local';
+
+                if ($source === 'local' && isset($a['id'])) {
+                    $user  = $localUsers[(int) $a['id']] ?? null;
+                    $photo = $user?->photo_url ? url($user->photo_url) : null;
+                    // Fallback: look up in testagent by email
+                    if (!$photo && $user?->email) {
+                        $photo = $externalPhotoByEmail[$user->email] ?? null;
+                    }
+                    $a['photo_url'] = $photo;
+                } elseif ($source === 'external' && isset($a['id'])) {
+                    $a['photo_url'] = $externalPhotoById[$a['id']] ?? null;
+                }
+
+                return $a;
+            }, $assignees);
+
+            $row->assignees = $updated;
+        }
     }
 }

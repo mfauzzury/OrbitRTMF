@@ -554,7 +554,7 @@ export type ExternalUser = {
   name: string;
   email: string;
   role: string;
-  avatarUrl: string | null;
+  photoUrl: string | null;
   createdAt: string;
   updatedAt: string;
 };

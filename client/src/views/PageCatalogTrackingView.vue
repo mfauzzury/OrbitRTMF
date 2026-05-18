@@ -437,10 +437,10 @@ onMounted(load);
           </div>
 
           <!-- Assignee Cards -->
-          <div v-if="indSummary.assignees.length === 0" class="rounded-lg border border-slate-200 bg-white py-16 text-center text-sm text-slate-400 shadow-sm">
+          <div v-if="indSummary.assignees.length === 0" class="mt-4 rounded-lg border border-slate-200 bg-white py-16 text-center text-sm text-slate-400 shadow-sm">
             No assignees found.
           </div>
-          <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div v-else class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div
               v-for="a in indSummary.assignees"
               :key="a.key"
@@ -448,7 +448,12 @@ onMounted(load);
             >
               <!-- Card header -->
               <div class="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
-                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">
+                <img
+                  v-if="a.photoUrl"
+                  :src="a.photoUrl"
+                  class="h-9 w-9 shrink-0 rounded-full object-cover"
+                />
+                <div v-else class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">
                   {{ initials(a.name) }}
                 </div>
                 <div class="min-w-0 flex-1">
@@ -456,27 +461,21 @@ onMounted(load);
                   <p v-if="a.email" class="truncate text-[11px] text-slate-400">{{ a.email }}</p>
                 </div>
                 <div class="shrink-0 text-right">
-                  <p class="text-sm font-bold text-slate-700">{{ a.done }}<span class="text-slate-400">/{{ a.total }}</span></p>
-                  <p class="text-[10px] text-slate-400">{{ donePct(a.done, a.total) }}% done</p>
+                  <p class="text-sm font-bold text-slate-700">{{ a.total }}<span class="text-[10px] font-normal text-slate-400 ml-0.5">pages</span></p>
                 </div>
               </div>
 
-              <!-- Progress bar -->
+              <!-- Stacked progress bar: bg=open | amber=in-progress | emerald=closed -->
               <div class="px-4 pt-3">
-                <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    class="h-full rounded-full bg-violet-500 transition-all"
-                    :style="{ width: donePct(a.done, a.total) + '%' }"
-                  />
+                <div class="flex h-2 w-full overflow-hidden rounded-full bg-slate-300">
+                  <div class="h-full bg-emerald-500 transition-all" :style="{ width: donePct(a.baFeedback.approved, a.total) + '%' }" />
+                  <div class="h-full bg-amber-400 transition-all"   :style="{ width: donePct(a.baFeedback.reviewed, a.total) + '%' }" />
                 </div>
-              </div>
-
-              <!-- BA feedback pills -->
-              <div class="flex flex-wrap items-center gap-1.5 px-4 py-2.5">
-                <span class="text-[10px] font-medium text-slate-400">BA Review:</span>
-                <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{{ a.baFeedback.open }} Open</span>
-                <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-600">{{ a.baFeedback.reviewed }} In Progress</span>
-                <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">{{ a.baFeedback.approved }} Closed</span>
+                <div class="mt-1.5 flex items-center gap-3 text-[10px] text-slate-400">
+                  <span class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-sm bg-emerald-500"></span>{{ a.baFeedback.approved }} Closed</span>
+                  <span class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-sm bg-amber-400"></span>{{ a.baFeedback.reviewed }} In Progress</span>
+                  <span class="flex items-center gap-1"><span class="inline-block h-2 w-2 rounded-sm bg-slate-300"></span>{{ a.baFeedback.open }} Open</span>
+                </div>
               </div>
 
               <!-- Module breakdown toggle -->
@@ -497,14 +496,12 @@ onMounted(load);
                     <span class="w-14 shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">{{ mod.code }}</span>
                     <div class="min-w-0 flex-1">
                       <p class="truncate text-[11px] text-slate-600">{{ mod.name }}</p>
-                      <div class="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          class="h-full rounded-full bg-violet-400 transition-all"
-                          :style="{ width: donePct(mod.done, mod.total) + '%' }"
-                        />
+                      <div class="mt-0.5 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-300">
+                        <div class="h-full bg-emerald-500 transition-all" :style="{ width: donePct(mod.baFeedback.approved, mod.total) + '%' }" />
+                        <div class="h-full bg-amber-400 transition-all"   :style="{ width: donePct(mod.baFeedback.reviewed, mod.total) + '%' }" />
                       </div>
                     </div>
-                    <span class="shrink-0 text-[10px] text-slate-400">{{ mod.done }}/{{ mod.total }}</span>
+                    <span class="shrink-0 text-[10px] text-slate-400">{{ mod.baFeedback.approved }}/{{ mod.total }}</span>
                   </div>
                 </div>
               </div>

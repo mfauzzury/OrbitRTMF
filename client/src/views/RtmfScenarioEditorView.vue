@@ -80,6 +80,28 @@ const steps = ref<RtmfScenarioStep[]>([]);
 // ── All frontends for page picker ──
 const allFrontends = ref<RtmfFrontend[]>([]);
 const pageSearches = ref<Record<number, string>>({}); // stepId → search query
+type PageDropdown = { stepId: number; x: number; y: number; width: number; el: HTMLElement } | null;
+const pageDropdown = ref<PageDropdown>(null);
+
+function openPageDropdown(e: Event, stepId: number) {
+  const el = e.target as HTMLElement;
+  const rect = el.getBoundingClientRect();
+  pageDropdown.value = { stepId, x: rect.left, y: rect.bottom, width: rect.width, el };
+  window.addEventListener('scroll', updatePageDropdownPos, true);
+}
+
+function updatePageDropdownPos() {
+  if (!pageDropdown.value) return;
+  const rect = pageDropdown.value.el.getBoundingClientRect();
+  pageDropdown.value.x = rect.left;
+  pageDropdown.value.y = rect.bottom;
+  pageDropdown.value.width = rect.width;
+}
+
+function closePageDropdown() {
+  window.removeEventListener('scroll', updatePageDropdownPos, true);
+  pageDropdown.value = null;
+}
 
 // ── Actors ──
 const allActors = ref<RtmfActor[]>([]);
@@ -129,8 +151,18 @@ async function loadFrontends() {
   try {
     const pid = projectStore.activeProjectId;
     const pidParam = pid ? `&project_id=${pid}` : "";
-    const res = await listRtmfFrontends(`?limit=500&sort_by=spec_id&sort_dir=asc${pidParam}`);
-    allFrontends.value = res.data ?? [];
+    const PAGE_SIZE = 200;
+    const MAX_PAGES = 50;
+    let page = 1;
+    let collected: RtmfFrontend[] = [];
+    while (page <= MAX_PAGES) {
+      const res = await listRtmfFrontends(`?limit=${PAGE_SIZE}&page=${page}&sort_by=spec_id&sort_dir=asc${pidParam}`);
+      const rows = res.data ?? [];
+      collected = collected.concat(rows);
+      if (rows.length < PAGE_SIZE) break;
+      page++;
+    }
+    allFrontends.value = collected;
   } catch {
     allFrontends.value = [];
   }
@@ -150,9 +182,19 @@ async function loadActors() {
 async function loadUsers() {
   try {
     const [local, ext] = await Promise.all([listUsers(), listExternalUsers()]);
-    const localMapped = (local.data ?? []).map((u) => ({ id: u.id, name: u.name, email: u.email, photoUrl: u.photoUrl ?? null, source: "local" as const }));
-    const extMapped = (ext.data ?? []).map((u) => ({ id: u.id, name: u.name, email: u.email, photoUrl: u.avatarUrl ?? null, source: "external" as const }));
-    allUsers.value = [...localMapped, ...extMapped].sort((a, b) => a.name.localeCompare(b.name));
+    const byEmail = new Map<string, { id: number | string; name: string; email: string; photoUrl: string | null; source: "local" | "external" }>();
+    for (const u of local.data ?? []) {
+      byEmail.set(u.email, { id: u.id, name: u.name, email: u.email, photoUrl: u.photoUrl ?? null, source: "local" });
+    }
+    for (const u of ext.data ?? []) {
+      const existing = byEmail.get(u.email);
+      if (existing) {
+        if (u.photoUrl) existing.photoUrl = u.photoUrl;
+      } else {
+        byEmail.set(u.email, { id: u.id, name: u.name, email: u.email, photoUrl: u.photoUrl ?? null, source: "external" });
+      }
+    }
+    allUsers.value = Array.from(byEmail.values()).sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     allUsers.value = [];
   }
@@ -656,28 +698,15 @@ onMounted(async () => {
                         <X class="h-3.5 w-3.5" />
                       </button>
                     </div>
-                    <div v-else class="relative">
+                    <div v-else>
                       <input
                         v-model="pageSearches[step.id]"
                         class="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
                         placeholder="Search page…"
+                        @input="openPageDropdown($event, step.id)"
+                        @focus="openPageDropdown($event, step.id)"
+                        @blur="setTimeout(closePageDropdown, 150)"
                       />
-                      <div
-                        v-if="(pageSearches[step.id] ?? '').trim()"
-                        class="absolute left-0 top-full z-20 mt-0.5 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
-                      >
-                        <div
-                          v-for="f in pagesForSearch(step.id)"
-                          :key="f.id"
-                          :title="f.title"
-                          @mousedown.prevent="selectPage(step, f)"
-                          class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-violet-50"
-                        >
-                          <span class="flex-shrink-0 font-mono text-[11px] text-slate-500">{{ f.specId }}</span>
-                          <span class="min-w-0 flex-1 truncate text-slate-700">{{ f.title }}</span>
-                        </div>
-                        <div v-if="pagesForSearch(step.id).length === 0" class="px-3 py-2.5 text-sm text-slate-400">No results</div>
-                      </div>
                     </div>
                   </div>
 
@@ -1036,4 +1065,26 @@ onMounted(async () => {
       </div>
     </div>
   </AdminLayout>
+
+  <!-- Page search dropdown — teleported to body to escape stacking contexts -->
+  <Teleport to="body">
+    <div
+      v-if="pageDropdown && (pageSearches[pageDropdown.stepId] ?? '').trim()"
+      class="fixed z-[9999] max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+      :style="{ top: `${pageDropdown.y + 2}px`, left: `${pageDropdown.x}px`, width: `${Math.max(pageDropdown.width, 260)}px` }"
+      @mousedown.prevent
+    >
+      <div
+        v-for="f in pagesForSearch(pageDropdown.stepId)"
+        :key="f.id"
+        :title="f.title"
+        @mousedown.prevent="selectPage(steps.find(s => s.id === pageDropdown!.stepId)!, f); closePageDropdown()"
+        class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-violet-50"
+      >
+        <span class="flex-shrink-0 font-mono text-[11px] text-slate-500">{{ f.specId }}</span>
+        <span class="min-w-0 flex-1 truncate text-slate-700">{{ f.title }}</span>
+      </div>
+      <div v-if="pagesForSearch(pageDropdown.stepId).length === 0" class="px-3 py-2.5 text-sm text-slate-400">No results</div>
+    </div>
+  </Teleport>
 </template>

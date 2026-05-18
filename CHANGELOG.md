@@ -9,7 +9,25 @@ All notable changes to this project are documented in this file.
 - Redesign topbar with a darker "PowerBar" concept.
 - Build notification module and add topbar notifications dropdown (similar to settings) showing the latest 5 notifications.
 
-## [1.2.7] - 2026-05-18
+## [1.2.9] - 2026-05-18
+
+### Added
+- **Assignee filter** on the Page Catalog list (`/admin/rtmf/frontends`) — dropdown populated exclusively from people who are actually assigned to at least one page (`GET /api/rtmf-frontends/assignee-list`). Includes a "Not assigned" option that filters pages with no assignees. Filter sends `assignee_id` + `assignee_source` (or `assignee_unassigned=1`) to the backend; backend matches via PostgreSQL `assignees::jsonb @> ?::jsonb`.
+- `GET /api/rtmf-frontends/assignee-list` backend endpoint — scans all `assignees` JSONB, deduplicates by `source:id`, enriches `photoUrl` live from local `users` table and testagent MySQL fallback (by email), returns sorted list.
+- `listRtmfFrontendAssignees()` API function added to `client/src/api/rtmf.ts`.
+
+### Changed
+- **Avatar standardisation** — all avatar fields across the system unified to `photoUrl`. External users (`ExternalUser` type) previously used `avatarUrl`; backend `UserController::externalIndex()` now returns `photo_url` (converted to `photoUrl` by `CamelCaseMiddleware`). All views updated: `UsersView`, `RtmfProjectMembersView`, `RtmfEditorView`, `RtmfScenarioEditorView`.
+- **Avatar enrichment** on the Page Catalog list — row assignee avatars resolved via a frontend lookup map built from `assigneeList` response (fresh photos) rather than stale JSONB `photo_url` values. `resolveAssigneePhoto()` helper checks `assigneePhotoMap` first, falls back to stored `photoUrl`.
+- **Avatar enrichment** on the Catalog Tracking individual tab — `byAssignee` dashboard endpoint now calls `resolveAssigneePhotos()` helper which looks up live `photo_url` from local `users` table and falls back to testagent `avatarUrl` by email match.
+- **Assignee picker deduplication** in `RtmfEditorView` and `RtmfScenarioEditorView` — local and external user lists are merged by email; each person appears once with the best available `photoUrl` (external preferred if it has a photo). Eliminates duplicate entries for users who exist in both systems.
+- Avatar photo resolution priority: (1) local uploaded `photo_url`, (2) testagent `avatarUrl` matched by email, (3) initials fallback circle.
+
+### Fixed
+- **Duplicate page** failing for pages that had already been duplicated — `spec_id` unique constraint was violated because soft-deleted copies still occupied the slot. Count query now uses `withTrashed()` and generates `_COPY_2`, `_COPY_3` etc. as needed. Duplicating an existing copy strips the `_COPY` suffix before counting, ensuring all copies branch from the original.
+- **Assignee filter** backend queries now correctly cast `json` column to `jsonb` (`assignees::jsonb @> ?::jsonb`) — the `assignees` column is `json` type, not `jsonb`, so the `@>` containment operator requires an explicit cast.
+
+## [1.2.8] - 2026-05-18
 
 ### Added
 - **Page Relations** page (`/admin/rtmf/relations`) — read-only view of all page-to-page connections auto-generated from Action-type form items in the Page Catalog. Grouped by source page with collapsible rows, module filter dropdown, and instant search across spec IDs, titles, conditions, and item labels.
@@ -24,11 +42,24 @@ All notable changes to this project are documented in this file.
 - Module filter in Page Relations uses exact first-segment match (`specId.split("-")[0] === filter`) instead of `startsWith` to avoid false matches (e.g. "PRF" matching "PRFE-01").
 - Collapsed group state in Page Relations resets on every data reload (project switch or manual refresh).
 
-## [1.2.6] - 2026-05-18
+## [1.2.7] - 2026-05-18
 
 ### Fixed
 - **Catalog Tracking — Individual tab**: Assignee with mixed `source` values in the `assignees` JSON (e.g. some frontends storing `source: 'local'`, others omitting it) produced two separate cards for the same person with split counts. Key now uses `id` only (ignoring `source`), collapsing duplicates into a single card.
 - **Catalog Tracking — Individual tab**: BA Review status pills and trend chart legend/tooltips showed "Reviewed / Approved" instead of the correct "In Progress / Closed" labels (DB values `reviewed` / `approved` unchanged).
+
+## [1.2.6] - 2026-05-18
+
+### Added
+- **Duplicate Page** — new button in the RTMF page list copies a page with title `+(1)`, a `_COPY` spec ID suffix, resets `isDone`, and syncs actors and scenario groups/rows.
+- **Pick from Library** for mockup upload — WordPress-style `MediaPickerModal` with Upload Files and Media Library tabs; library picks are stored via the new `POST /api/rtmf-frontends/{id}/attachments/link` endpoint (no re-upload).
+- **Individual tab** on the Page Catalog Tracking dashboard — 14-day BA feedback trend chart (stacked bars per day) plus per-assignee cards showing done/total counts, BA feedback status pills, and expandable per-module breakdown.
+- Changelog storage migrated from static `docs/CHANGELOG.md` file to the DB settings table, editable via `/admin/tools/changelog`.
+
+### Fixed
+- BA/QA/TC/DV review column header alignment corrected in the page list view.
+- `expandedCards` reactivity bug — changed from `ref<Set<string>>` (mutations not tracked by Vue 3) to `ref<Record<string, boolean>>`.
+- Trend chart bar heights now use absolute pixel values based on dataset max instead of `height: X%` (which requires a fixed-height parent to render correctly).
 
 ## [1.2.5] - 2026-05-17
 

@@ -131,11 +131,13 @@ class RtmfDashboardController extends Controller
 
         $byReview = [];
         foreach ($roles as $role) {
-            $rows = $feedbackCounts->where('role', $role);
+            $rows     = $feedbackCounts->where('role', $role);
+            $approved = (int) ($rows->where('status', 'approved')->first()?->total ?? 0);
+            $reviewed = (int) ($rows->where('status', 'reviewed')->first()?->total ?? 0);
             $byReview[$role] = [
-                'approved' => (int) ($rows->where('status', 'approved')->first()?->total ?? 0),
-                'reviewed' => (int) ($rows->where('status', 'reviewed')->first()?->total ?? 0),
-                'open'     => (int) ($rows->where('status', 'open')->first()?->total ?? 0),
+                'approved' => $approved,
+                'reviewed' => $reviewed,
+                'open'     => $totalFrontends - $approved - $reviewed,
             ];
         }
 
@@ -154,16 +156,18 @@ class RtmfDashboardController extends Controller
         $byRoleModule = [];
         foreach ($roles as $role) {
             $byRoleModule[$role] = $modules->map(function ($module) use ($moduleRoleFeedback, $role, $frontendStats) {
-                $rows  = $moduleRoleFeedback->where('module_id', $module->id)->where('role', $role);
-                $total = (int) ($frontendStats->get($module->id)?->frontends_count ?? 0);
+                $rows     = $moduleRoleFeedback->where('module_id', $module->id)->where('role', $role);
+                $total    = (int) ($frontendStats->get($module->id)?->frontends_count ?? 0);
+                $approved = (int) ($rows->where('status', 'approved')->first()?->total ?? 0);
+                $reviewed = (int) ($rows->where('status', 'reviewed')->first()?->total ?? 0);
                 return [
                     'id'       => $module->id,
                     'code'     => $module->code,
                     'name'     => $module->name,
                     'total'    => $total,
-                    'approved' => (int) ($rows->where('status', 'approved')->first()?->total ?? 0),
-                    'reviewed' => (int) ($rows->where('status', 'reviewed')->first()?->total ?? 0),
-                    'open'     => (int) ($rows->where('status', 'open')->first()?->total ?? 0),
+                    'approved' => $approved,
+                    'reviewed' => $reviewed,
+                    'open'     => $total - $approved - $reviewed,
                 ];
             })->filter(fn ($m) => $m['total'] > 0)->values();
         }
@@ -220,21 +224,35 @@ class RtmfDashboardController extends Controller
             ->select('id', 'code', 'name')
             ->get()->keyBy('id');
 
+        // Pre-build photo lookup: local user id -> photo URL (with testagent fallback)
+        $allAssigneeData = [];
+        foreach ($frontends as $fe) {
+            foreach (json_decode($fe->assignees, true) ?? [] as $a) {
+                $allAssigneeData[] = $a;
+            }
+        }
+        $photoByLocalId = $this->resolveAssigneePhotos($allAssigneeData);
+
         $assigneeMap  = [];
         $feAssigneeKeys = []; // frontend_id => [key, ...]
 
         foreach ($frontends as $fe) {
             $list = json_decode($fe->assignees, true) ?? [];
             foreach ($list as $a) {
-                $key = ($a['source'] ?? 'x') . ':' . ($a['id'] ?? $a['name']);
+                $email = strtolower(trim($a['email'] ?? ''));
+                $key   = $email !== '' ? 'email:' . $email : 'name:' . strtolower(trim($a['name'] ?? 'unknown'));
                 $feAssigneeKeys[$fe->id][] = $key;
 
                 if (!isset($assigneeMap[$key])) {
+                    $localId   = ($a['source'] ?? 'local') === 'local' ? ($a['id'] ?? null) : null;
+                    $photoUrl  = ($localId ? $photoByLocalId[$localId] : null)
+                                 ?? $a['photo_url'] ?? $a['photoUrl'] ?? null;
+
                     $assigneeMap[$key] = [
                         'key'       => $key,
                         'name'      => $a['name'],
                         'email'     => $a['email'] ?? null,
-                        'photoUrl'  => $a['photoUrl'] ?? null,
+                        'photoUrl'  => $photoUrl,
                         'total'     => 0,
                         'done'      => 0,
                         'byModule'  => [],
@@ -249,11 +267,12 @@ class RtmfDashboardController extends Controller
                 if (!isset($assigneeMap[$key]['byModule'][$mid])) {
                     $mod = $moduleLookup[$mid] ?? null;
                     $assigneeMap[$key]['byModule'][$mid] = [
-                        'moduleId' => $mid,
-                        'code'     => $mod?->code ?? '?',
-                        'name'     => $mod?->name ?? '?',
-                        'total'    => 0,
-                        'done'     => 0,
+                        'moduleId'   => $mid,
+                        'code'       => $mod?->code ?? '?',
+                        'name'       => $mod?->name ?? '?',
+                        'total'      => 0,
+                        'done'       => 0,
+                        'baFeedback' => ['approved' => 0, 'reviewed' => 0, 'open' => 0],
                     ];
                 }
                 $assigneeMap[$key]['byModule'][$mid]['total']++;
@@ -261,20 +280,37 @@ class RtmfDashboardController extends Controller
             }
         }
 
-        // ── 2. BA feedback per assignee ──────────────────────────────────────
+        // ── 2. BA feedback per assignee (overall + per module) ───────────────
         $baFeedbacks = DB::table('rtmf_frontend_feedbacks')
             ->select('rtmf_frontend_id', 'status')
             ->where('role', 'business_analyst')
             ->whereIn('rtmf_frontend_id', $frontendIds)
             ->get();
 
+        // Build frontend_id => module_id lookup for per-module BA feedback
+        $feModuleId = $frontends->pluck('module_id', 'id');
+
         foreach ($baFeedbacks as $fb) {
+            $mid = $feModuleId[$fb->rtmf_frontend_id] ?? null;
             foreach ($feAssigneeKeys[$fb->rtmf_frontend_id] ?? [] as $key) {
                 if (isset($assigneeMap[$key])) {
                     $assigneeMap[$key]['baFeedback'][$fb->status]++;
+                    if ($mid && isset($assigneeMap[$key]['byModule'][$mid])) {
+                        $assigneeMap[$key]['byModule'][$mid]['baFeedback'][$fb->status]++;
+                    }
                 }
             }
         }
+
+        // Recalculate open = total - approved - reviewed for overall and per-module
+        foreach ($assigneeMap as &$a) {
+            $a['baFeedback']['open'] = $a['total'] - $a['baFeedback']['approved'] - $a['baFeedback']['reviewed'];
+            foreach ($a['byModule'] as &$m) {
+                $m['baFeedback']['open'] = $m['total'] - $m['baFeedback']['approved'] - $m['baFeedback']['reviewed'];
+            }
+            unset($m);
+        }
+        unset($a);
 
         // Flatten and sort by total desc
         $assignees = array_values(array_map(function ($a) {
@@ -309,5 +345,40 @@ class RtmfDashboardController extends Controller
             'assignees'  => $assignees,
             'dailyTrend' => array_values($days),
         ]);
+    }
+
+    /** Returns [localUserId => photoUrl] for all local assignees, with testagent fallback. */
+    private function resolveAssigneePhotos(array $assigneeData): array
+    {
+        $localIds = [];
+        foreach ($assigneeData as $a) {
+            if (($a['source'] ?? 'local') === 'local' && isset($a['id'])) {
+                $localIds[] = (int) $a['id'];
+            }
+        }
+        if (empty($localIds)) return [];
+
+        $localUsers = \App\Models\User::whereIn('id', array_unique($localIds))
+            ->get(['id', 'email', 'photo_url'])
+            ->keyBy('id');
+
+        $emailsToLookup = $localUsers->filter(fn ($u) => !$u->photo_url)->pluck('email')->values()->toArray();
+
+        $extByEmail = collect();
+        if (!empty($emailsToLookup)) {
+            try {
+                $extByEmail = DB::connection('mysql_external')
+                    ->table('User')
+                    ->whereIn('email', $emailsToLookup)
+                    ->pluck('avatarUrl', 'email');
+            } catch (\Throwable) {}
+        }
+
+        $result = [];
+        foreach ($localUsers as $user) {
+            $photo = $user->photo_url ? url($user->photo_url) : ($extByEmail[$user->email] ?? null);
+            $result[$user->id] = $photo;
+        }
+        return $result;
     }
 }

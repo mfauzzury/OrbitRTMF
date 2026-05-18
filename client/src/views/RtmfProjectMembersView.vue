@@ -240,7 +240,7 @@ function roleColorFor(value: string) {
                 @mousedown.prevent="selectUser(u)"
               >
                 <div class="h-7 w-7 flex-shrink-0">
-                  <img v-if="u.avatarUrl" :src="u.avatarUrl" class="h-7 w-7 rounded-full object-cover" />
+                  <img v-if="u.photoUrl" :src="u.photoUrl" class="h-7 w-7 rounded-full object-cover" />
                   <div v-else class="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
                     {{ u.name.charAt(0).toUpperCase() }}
                   </div>
@@ -278,7 +278,7 @@ function roleColorFor(value: string) {
         <!-- Selected user preview -->
         <div v-if="selectedUser" class="flex items-center gap-2.5 border-t border-slate-100 bg-violet-50 px-4 py-2">
           <div class="h-6 w-6 flex-shrink-0">
-            <img v-if="selectedUser.avatarUrl" :src="selectedUser.avatarUrl" class="h-6 w-6 rounded-full object-cover" />
+            <img v-if="selectedUser.photoUrl" :src="selectedUser.photoUrl" class="h-6 w-6 rounded-full object-cover" />
             <div v-else class="flex h-6 w-6 items-center justify-center rounded-full bg-violet-200 text-[10px] font-semibold text-violet-700">
               {{ selectedUser.name.charAt(0).toUpperCase() }}
             </div>

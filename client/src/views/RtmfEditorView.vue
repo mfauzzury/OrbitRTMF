@@ -4,7 +4,7 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import { Cable, Paperclip, Trash2, LayoutGrid, Save, Upload, X, Plus, TableProperties, ExternalLink, Search, GripVertical, Layout, UserCheck, MessageSquare, CheckCircle2, Share2, Image } from "lucide-vue-next";
 
 import AdminLayout from "@/layouts/AdminLayout.vue";
-import MarkdownEditor from "@/components/MarkdownEditor.vue";
+import RichTextEditor from "@/components/RichTextEditor.vue";
 import MediaPickerModal from "@/components/MediaPickerModal.vue";
 import {
   createRtmfFrontend,
@@ -48,20 +48,23 @@ import { useRtmfProjectStore } from "@/stores/rtmfProject";
 
 const vAutoResize = {
   mounted(el: HTMLTextAreaElement) {
+    const MIN = 56; // 3.5rem
     const MAX = 160;
     const resize = () => {
       el.style.height = 'auto';
-      const next = Math.min(el.scrollHeight, MAX);
+      const next = Math.max(MIN, Math.min(el.scrollHeight, MAX));
       el.style.height = next + 'px';
       el.style.overflowY = el.scrollHeight > MAX ? 'auto' : 'hidden';
     };
-    resize();
+    // defer so the browser has laid out the element and scrollHeight is accurate
+    setTimeout(resize, 0);
     el.addEventListener('input', resize);
   },
   updated(el: HTMLTextAreaElement) {
+    const MIN = 56;
     const MAX = 160;
     el.style.height = 'auto';
-    const next = Math.min(el.scrollHeight, MAX);
+    const next = Math.max(MIN, Math.min(el.scrollHeight, MAX));
     el.style.height = next + 'px';
     el.style.overflowY = el.scrollHeight > MAX ? 'auto' : 'hidden';
   },
@@ -212,13 +215,20 @@ async function loadRefData() {
   const [m, a, localU, extU] = await Promise.all([listRtmfModules(pidParam), listRtmfActors(pidParam), listUsers(), listExternalUsers()]);
   modules.value = m.data;
   actors.value = a.data;
-  const local: AssigneeOption[] = localU.data.map((u) => ({
-    id: u.id, name: u.name, email: u.email, photoUrl: u.photoUrl ?? null, source: 'local' as const,
-  }));
-  const external: AssigneeOption[] = extU.data.map((u) => ({
-    id: u.id, name: u.name, email: u.email, photoUrl: u.avatarUrl ?? null, source: 'external' as const,
-  }));
-  allUsers.value = [...local, ...external].sort((a, b) => a.name.localeCompare(b.name));
+  const byEmail = new Map<string, AssigneeOption>();
+  for (const u of localU.data) {
+    byEmail.set(u.email, { id: u.id, name: u.name, email: u.email, photoUrl: u.photoUrl ?? null, source: 'local' as const });
+  }
+  for (const u of extU.data) {
+    const existing = byEmail.get(u.email);
+    if (existing) {
+      // Same person in both systems — prefer external photo if available
+      if (u.photoUrl) existing.photoUrl = u.photoUrl;
+    } else {
+      byEmail.set(u.email, { id: u.id, name: u.name, email: u.email, photoUrl: u.photoUrl ?? null, source: 'external' as const });
+    }
+  }
+  allUsers.value = Array.from(byEmail.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 async function loadAllFrontends() {
@@ -296,7 +306,15 @@ async function save() {
 
   try {
     if (isEdit.value) {
-      await updateRtmfFrontend(id.value, payload);
+      await Promise.all([
+        updateRtmfFrontend(id.value, payload),
+        ...items.value.map(item => saveItem(item)),
+        ...apiEndpoints.value.map(ep => updateRtmfApiEndpoint(id.value, ep.id, {
+          method: ep.method,
+          endpoint: ep.endpoint,
+          description: ep.description,
+        })),
+      ]);
       toast.success("Page saved");
     } else {
       await createRtmfFrontend(payload);
@@ -942,7 +960,7 @@ onMounted(async () => {
           <h2 class="text-sm font-semibold text-slate-900">Description</h2>
         </div>
         <div class="p-4">
-          <MarkdownEditor v-model="description" :rows="10" placeholder="Purpose, key fields, shared components used…" />
+          <RichTextEditor v-model="description" placeholder="Purpose, key fields, shared components used…" />
         </div>
       </article>
 
@@ -1345,9 +1363,8 @@ onMounted(async () => {
                   v-auto-resize
                   v-model="item.condition"
                   @blur="saveItem(item)"
-                  rows="2"
                   class="w-full resize-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-                  style="min-height: 3.5rem"
+                  style="min-height: 3.5rem; height: 3.5rem"
                   placeholder="e.g. status ≠ DRAF"
                 />
                 <!-- Action: condition inputs, one per pair -->
@@ -1375,9 +1392,8 @@ onMounted(async () => {
                   v-auto-resize
                   v-model="item.validation"
                   @blur="saveItem(item)"
-                  rows="2"
                   class="w-full resize-none rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 shadow-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-                  style="min-height: 3.5rem"
+                  style="min-height: 3.5rem; height: 3.5rem"
                   placeholder="e.g. Max 255, Email"
                 />
                 <!-- Action: page picker per pair, aligned to condition rows -->

@@ -4,11 +4,13 @@ import { RouterLink, useRouter } from "vue-router";
 import { ChevronLeft, ChevronRight, Copy, LayoutGrid, Plus, Search } from "lucide-vue-next";
 
 import AdminLayout from "@/layouts/AdminLayout.vue";
+import { duplicateRtmfFrontend, listRtmfFrontendAssignees, listRtmfFrontends, listRtmfModules } from "@/api/rtmf";
 import { isAbortError } from "@/api/client";
-import { duplicateRtmfFrontend, listRtmfFrontends, listRtmfModules } from "@/api/rtmf";
 import { useRtmfProjectStore } from "@/stores/rtmfProject";
 import { useToast } from "@/composables/useToast";
 import type { RtmfFrontend, RtmfModule } from "@/types";
+
+type AssigneeOption = { key: string; label: string; assigneeId: number | null; source: string; name: string; photoUrl?: string | null };
 
 const router = useRouter();
 const toast = useToast();
@@ -26,6 +28,22 @@ const PAGE_SIZES = [10, 25, 50, 100];
 const q = ref("");
 const moduleFilter = ref<number | "">("");
 const doneFilter = ref<"" | "1" | "0">("");
+const assigneeFilter = ref("");
+const assigneeOptions = ref<AssigneeOption[]>([]);
+
+// Lookup map: "source:id" -> photoUrl — used to resolve fresh photos for row avatars
+const assigneePhotoMap = computed(() => {
+  const m: Record<string, string | null> = {};
+  for (const o of assigneeOptions.value) {
+    if (o.assigneeId) m[`${o.source}:${o.assigneeId}`] = o.photoUrl ?? null;
+  }
+  return m;
+});
+
+function resolveAssigneePhoto(a: { id?: number | string; source?: string; photoUrl?: string | null }): string | null {
+  const key = `${a.source ?? 'local'}:${a.id}`;
+  return assigneePhotoMap.value[key] ?? a.photoUrl ?? null;
+}
 
 const rangeStart = computed(() => (total.value === 0 ? 0 : (page.value - 1) * limit.value + 1));
 const rangeEnd = computed(() => Math.min(page.value * limit.value, total.value));
@@ -49,6 +67,19 @@ async function load() {
   if (q.value) params.set("q", q.value);
   if (moduleFilter.value) params.set("module_id", String(moduleFilter.value));
   if (doneFilter.value !== "") params.set("is_done", doneFilter.value);
+  if (assigneeFilter.value === "unassigned") {
+    params.set("assignee_unassigned", "1");
+  } else if (assigneeFilter.value) {
+    const opt = assigneeOptions.value.find(o => o.key === assigneeFilter.value);
+    if (opt) {
+      if (opt.assigneeId) {
+        params.set("assignee_id", String(opt.assigneeId));
+        params.set("assignee_source", opt.source);
+      } else {
+        params.set("assignee_name", opt.name);
+      }
+    }
+  }
   const pid = projectStore.activeProjectId;
   if (pid) params.set("project_id", String(pid));
   try {
@@ -117,14 +148,27 @@ watch(() => projectStore.activeProjectId, (id, prev) => {
 
 onMounted(async () => {
   await projectStore.loadProjects();
-  try {
-    const pid = projectStore.activeProjectId;
-    const modParams = pid ? `?project_id=${pid}` : "";
-    const modResp = await listRtmfModules(modParams);
-    modules.value = modResp.data;
-  } catch (e) {
-    toast.error("Failed to load modules", e instanceof Error ? e.message : "API error — check console");
-    console.error("[RtmfListView]", e);
+  const pid = projectStore.activeProjectId;
+  const assigneeParams = pid ? `?project_id=${pid}` : "";
+  const [modResp, assigneeResp] = await Promise.allSettled([
+    listRtmfModules(pid ? `?project_id=${pid}` : ""),
+    listRtmfFrontendAssignees(assigneeParams),
+  ]);
+  if (modResp.status === "fulfilled") {
+    modules.value = modResp.value.data;
+  } else {
+    toast.error("Failed to load modules", "API error — check console");
+    console.error("[RtmfListView]", modResp.reason);
+  }
+  if (assigneeResp.status === "fulfilled") {
+    assigneeOptions.value = assigneeResp.value.data.map(u => ({
+      key: u.assigneeId ? `${u.source}:${u.assigneeId}` : `name:${u.name}`,
+      label: u.name,
+      assigneeId: u.assigneeId,
+      source: u.source,
+      name: u.name,
+      photoUrl: u.photoUrl ?? null,
+    }));
   }
   listReady.value = true;
   await load();
@@ -181,6 +225,15 @@ onMounted(async () => {
                 <option value="">All status</option>
                 <option value="1">Done</option>
                 <option value="0">Pending</option>
+              </select>
+              <select
+                v-model="assigneeFilter"
+                class="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm shadow-sm focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                @change="resetAndLoad"
+              >
+                <option value="">All assignees</option>
+                <option value="unassigned">— Not assigned</option>
+                <option v-for="opt in assigneeOptions" :key="opt.key" :value="opt.key">{{ opt.label }}</option>
               </select>
               <div class="relative">
                 <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -275,14 +328,14 @@ onMounted(async () => {
                     <template v-for="(a, i) in (item.assignees ?? []).slice(0, 4)" :key="String(a.id)">
                       <div class="group relative" :style="{ zIndex: 10 - i }">
                         <img
-                          v-if="a.photoUrl"
-                          :src="a.photoUrl"
+                          v-if="resolveAssigneePhoto(a)"
+                          :src="resolveAssigneePhoto(a)!"
                           class="h-6 w-6 rounded-full object-cover ring-2 ring-white"
                         />
                         <div
                           v-else
                           class="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-[10px] font-semibold text-violet-700 ring-2 ring-white"
-                        >{{ a.name.charAt(0).toUpperCase() }}</div>
+                        >{{ a.name?.charAt(0).toUpperCase() }}</div>
                         <div class="pointer-events-none absolute bottom-full left-1/2 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100">
                           {{ a.name }}
                           <div class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
