@@ -53,3 +53,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 
   return payload;
 }
+
+export function isAbortError(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}

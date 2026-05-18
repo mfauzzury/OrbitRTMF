@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from "vue-router";
 import { ChevronLeft, ChevronRight, LayoutGrid, Plus, Search } from "lucide-vue-next";
 
 import AdminLayout from "@/layouts/AdminLayout.vue";
+import { isAbortError } from "@/api/client";
 import { listRtmfFrontends, listRtmfModules } from "@/api/rtmf";
 import { useRtmfProjectStore } from "@/stores/rtmfProject";
 import { useToast } from "@/composables/useToast";
@@ -29,24 +30,38 @@ const rangeStart = computed(() => (total.value === 0 ? 0 : (page.value - 1) * li
 const rangeEnd = computed(() => Math.min(page.value * limit.value, total.value));
 
 let loadSeq = 0;
+let loadAbort: AbortController | null = null;
+const listReady = ref(false);
 
 async function load() {
   const seq = ++loadSeq;
+  const requestedPage = page.value;
+  loadAbort?.abort();
+  loadAbort = new AbortController();
   loading.value = true;
-  const params = new URLSearchParams({ page: String(page.value), limit: String(limit.value) });
+  const params = new URLSearchParams({
+    page: String(requestedPage),
+    limit: String(limit.value),
+    _cb: String(seq),
+  });
   if (q.value) params.set("q", q.value);
   if (moduleFilter.value) params.set("module_id", String(moduleFilter.value));
   if (doneFilter.value !== "") params.set("is_done", doneFilter.value);
   const pid = projectStore.activeProjectId;
   if (pid) params.set("project_id", String(pid));
   try {
-    const response = await listRtmfFrontends(`?${params.toString()}`);
-    if (seq !== loadSeq) return;
+    const response = await listRtmfFrontends(`?${params.toString()}`, {
+      signal: loadAbort.signal,
+      cache: "no-store",
+    });
+    if (seq !== loadSeq || requestedPage !== page.value) return;
+    const responsePage = response.meta?.page as number | undefined;
+    if (responsePage !== undefined && responsePage !== requestedPage) return;
     rows.value = response.data;
     total.value = (response.meta?.total as number) ?? response.data.length;
     totalPages.value = (response.meta?.totalPages as number) ?? (Math.ceil(total.value / limit.value) || 1);
   } catch (e) {
-    if (seq !== loadSeq) return;
+    if (isAbortError(e) || seq !== loadSeq) return;
     toast.error("Failed to load", e instanceof Error ? e.message : "API error");
   } finally {
     if (seq === loadSeq) loading.value = false;
@@ -78,7 +93,10 @@ watch(q, () => {
   searchTimer = setTimeout(resetAndLoad, 350);
 });
 
-watch(() => projectStore.activeProjectId, resetAndLoad);
+watch(() => projectStore.activeProjectId, (id, prev) => {
+  if (!listReady.value || id === prev) return;
+  resetAndLoad();
+});
 
 onMounted(async () => {
   await projectStore.loadProjects();
@@ -91,6 +109,7 @@ onMounted(async () => {
     toast.error("Failed to load modules", e instanceof Error ? e.message : "API error — check console");
     console.error("[RtmfListView]", e);
   }
+  listReady.value = true;
   await load();
 });
 
