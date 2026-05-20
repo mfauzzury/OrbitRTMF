@@ -105,19 +105,66 @@ const userInitials = computed(() => {
 
 const userRoleLabel = computed(() => auth.user?.role || "Administrator");
 
-const TESTER_ALLOWED_GROUPS = new Set(["dashboard", "rtmf-setup", "rtmf"]);
+const effectivePerms = computed((): string[] => {
+  if (auth.isAdmin) return auth.permissions;
+  return rtmfProjectStore.effectivePermissions;
+});
+
 const visibleMenu = computed(() => {
-  const base = auth.isTester
-    ? menuStore.resolvedMenu.filter((g) => TESTER_ALLOWED_GROUPS.has(g.id))
-    : menuStore.resolvedMenu;
+  const userPerms = effectivePerms.value;
 
-  if (auth.isAdmin) return base;
-
-  // Strip adminOnly items from each group for non-admins
-  return base
-    .map((g) => ({ ...g, items: g.items.filter((item) => !item.adminOnly) }))
+  return menuStore.resolvedMenu
+    .filter((g) => {
+      if (!g.requiredPermissions || g.requiredPermissions.length === 0) return true;
+      if (auth.isAdmin) return true;
+      return g.requiredPermissions.some((p) => userPerms.includes(p));
+    })
+    .map((g) => ({
+      ...g,
+      items: auth.isAdmin ? g.items : g.items.filter((item) => !item.adminOnly),
+    }))
     .filter((g) => g.items.length > 0);
 });
+
+const PROJECT_ROUTE_MAP: Record<string, string> = {
+  "/admin/rtmf/dashboard":   "dashboard",
+  "/admin/rtmf/frontends":   "frontends",
+  "/admin/rtmf/modules":     "modules",
+  "/admin/rtmf/actors":      "actors",
+  "/admin/rtmf/scenarios":   "scenarios",
+  "/admin/rtmf/relations":   "relations",
+  "/admin/rtmf/import":      "import",
+  "/admin/rtmf/export":      "export",
+  "/admin/defects":          "defects",
+  "/admin/cr":               "cr",
+  "/admin/catalog-tracking": "tracking",
+};
+
+function injectProjectId(menu: typeof visibleMenu.value, projectId: number | null) {
+  if (!projectId) return menu;
+  return menu.map((group) => ({
+    ...group,
+    items: group.items.map((item) => {
+      const segment = PROJECT_ROUTE_MAP[item.to];
+      if (!segment) return item;
+      const base = `/admin/rtmf/projects/${projectId}/${segment}`;
+      return {
+        ...item,
+        to: base,
+        children: item.children?.map((child) => ({
+          ...child,
+          to: PROJECT_ROUTE_MAP[child.to]
+            ? `/admin/rtmf/projects/${projectId}/${PROJECT_ROUTE_MAP[child.to]}`
+            : child.to,
+        })),
+      };
+    }),
+  }));
+}
+
+const finalMenu = computed(() =>
+  injectProjectId(visibleMenu.value, rtmfProjectStore.activeProjectId),
+);
 const HEADER_TEXT_MAX = 20;
 
 function truncateHeaderText(value: string, max = HEADER_TEXT_MAX) {
@@ -146,6 +193,19 @@ const childRowClass = computed(() =>
     ? "block rounded-md px-3 py-0.5 text-[13px] leading-tight transition-all hover:bg-[var(--accent-50)]"
     : "block rounded-md px-3 py-1 text-sm transition-all hover:bg-[var(--accent-50)]",
 );
+
+function switchProject(id: number) {
+  rtmfProjectStore.setActive(id);
+  // If currently on a project-scoped URL, navigate to the same section in the new project
+  const currentProjectId = route.params.projectId;
+  if (currentProjectId) {
+    const newPath = route.path.replace(
+      `/admin/rtmf/projects/${String(currentProjectId)}/`,
+      `/admin/rtmf/projects/${id}/`,
+    );
+    if (newPath !== route.path) router.push(newPath);
+  }
+}
 
 async function signOut() {
   try {
@@ -194,7 +254,7 @@ function syncOpenMenus() {
     }
   };
 
-  for (const group of visibleMenu.value) {
+  for (const group of finalMenu.value) {
     for (const item of group.items) {
       syncNode(item);
     }
@@ -202,7 +262,7 @@ function syncOpenMenus() {
 }
 
 watch(() => route.path, syncOpenMenus, { immediate: true });
-watch(() => visibleMenu.value, syncOpenMenus, { deep: true });
+watch(() => finalMenu.value, syncOpenMenus, { deep: true });
 </script>
 
 <template>
@@ -445,7 +505,7 @@ watch(() => visibleMenu.value, syncOpenMenus, { deep: true });
               <select
                 :value="rtmfProjectStore.activeProjectId ?? ''"
                 class="w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-8 text-sm font-medium text-slate-800 shadow-sm focus:border-[var(--accent-400)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-300)]"
-                @change="rtmfProjectStore.setActive(Number(($event.target as HTMLSelectElement).value))"
+                @change="switchProject(Number(($event.target as HTMLSelectElement).value))"
               >
                 <option value="" disabled>Select project…</option>
                 <option v-for="p in rtmfProjectStore.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
@@ -456,7 +516,7 @@ watch(() => visibleMenu.value, syncOpenMenus, { deep: true });
         </div>
 
         <nav class="flex-1 p-3" :class="isCollapsed ? 'md:overflow-visible md:px-0 md:py-2' : ''">
-          <div v-for="(group, gi) in visibleMenu" :key="group.id">
+          <div v-for="(group, gi) in finalMenu" :key="group.id">
             <p
               v-if="group.label"
               class="px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400"

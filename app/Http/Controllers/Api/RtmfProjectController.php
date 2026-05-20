@@ -127,12 +127,10 @@ class RtmfProjectController extends Controller
             return $this->sendError(404, 'NOT_FOUND', 'Project not found');
         }
 
-        $localUser = $this->memberService->findOrProvisionByExternalId(
-            $request->input('external_user_id')
-        );
+        $localUser = \App\Models\User::find($request->input('user_id'));
 
         if (! $localUser) {
-            return $this->sendError(404, 'USER_NOT_FOUND', 'External user not found.');
+            return $this->sendError(404, 'USER_NOT_FOUND', 'User not found.');
         }
 
         DB::table('rtmf_project_users')->insertOrIgnore([

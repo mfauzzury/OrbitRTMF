@@ -44,6 +44,7 @@ export type MenuGroupDef = {
   id: string;
   label: string;
   items: MenuItemDef[];
+  requiredPermissions?: string[];
 };
 
 export type AdminMenuPrefs = {
@@ -68,6 +69,7 @@ export const DEFAULT_MENU: MenuGroupDef[] = [
   {
     id: "portal",
     label: "Webfront",
+    requiredPermissions: ["posts.view"],
     items: [
       { id: "dashboard", label: "Dashboard", to: "/admin/portal/dashboard", icon: Gauge },
       {
@@ -105,6 +107,7 @@ export const DEFAULT_MENU: MenuGroupDef[] = [
   {
     id: "rtmf-setup",
     label: "Setup",
+    requiredPermissions: ["rtmf.manage"],
     items: [
       { id: "rtmf-projects", label: "Projects", to: "/admin/rtmf/projects", icon: FolderKanban },
     ],
@@ -112,6 +115,7 @@ export const DEFAULT_MENU: MenuGroupDef[] = [
   {
     id: "administration",
     label: "Administration",
+    requiredPermissions: ["users.view"],
     items: [
       {
         id: "platform-auth",
@@ -141,6 +145,7 @@ export const DEFAULT_MENU: MenuGroupDef[] = [
   {
     id: "rtmf",
     label: "Page Catalog",
+    requiredPermissions: ["rtmf.catalog"],
     items: [
       { id: "rtmf-dashboard",        label: "Dashboard",      to: "/admin/rtmf/dashboard",    icon: LayoutDashboard },
       { id: "rtmf-frontends", label: "Pages", to: "/admin/rtmf/frontends", icon: AppWindow },
@@ -161,6 +166,7 @@ export const DEFAULT_MENU: MenuGroupDef[] = [
   {
     id: "tools",
     label: "Tools",
+    requiredPermissions: ["rtmf.tools"],
     items: [
       { id: "rtmf-import",      label: "Import",    to: "/admin/rtmf/import",      icon: FileInput },
       { id: "rtmf-export",      label: "Export",    to: "/admin/rtmf/export",      icon: FileSpreadsheet },
@@ -170,6 +176,7 @@ export const DEFAULT_MENU: MenuGroupDef[] = [
   {
     id: "defect-tracking",
     label: "Project Tracker",
+    requiredPermissions: ["rtmf.tracker"],
     items: [
       { id: "defect-reporting", label: "Defects",              to: "/admin/defects",          icon: Bug },
       { id: "cr-tracking",      label: "Change Request (CR)",  to: "/admin/cr",               icon: GitPullRequest },

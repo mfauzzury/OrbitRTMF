@@ -226,12 +226,20 @@ class AuthController extends Controller
             }
         }
 
+        // Admin gets all permissions statically. All other roles derive access from
+        // their project membership — the frontend computes effective permissions from
+        // rtmfProjectStore.activeProjectRole, so no static list is needed here.
+        $permissions = strtolower($user->role ?? '') === 'admin'
+            ? \App\Enums\Permission::all()
+            : [];
+
         return [
-            'id'        => $user->id,
-            'email'     => $user->email,
-            'name'      => $user->name,
-            'photo_url' => $photoUrl,
-            'role'      => $user->role,
+            'id'          => $user->id,
+            'email'       => $user->email,
+            'name'        => $user->name,
+            'photo_url'   => $photoUrl,
+            'role'        => $user->role,
+            'permissions' => $permissions,
         ];
     }
 }

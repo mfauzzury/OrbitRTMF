@@ -20,6 +20,18 @@ export const useRtmfProjectStore = defineStore("rtmfProject", {
       const p = s.projects.find((p) => p.id === s.activeProjectId);
       return p?.myRole === "admin" || p?.myRole === "business_analyst";
     },
+    effectivePermissions: (s): string[] => {
+      const p = s.projects.find((p) => p.id === s.activeProjectId);
+      const role = p?.myRole ?? null;
+      if (!role) return [];
+      if (role === "admin" || role === "business_analyst")
+        return ["rtmf.catalog", "rtmf.tools", "rtmf.tracker", "rtmf.feedback"];
+      if (role === "qa" || role === "technical" || role === "developer")
+        return ["rtmf.catalog", "rtmf.tracker", "rtmf.feedback"];
+      if (role === "viewer")
+        return ["rtmf.tracker"];
+      return [];
+    },
   },
 
   actions: {

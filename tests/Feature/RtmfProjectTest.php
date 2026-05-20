@@ -269,57 +269,42 @@ class RtmfProjectTest extends TestCase
 
     // ── Add member ───────────────────────────────────────────────────────────
 
-    public function test_admin_can_add_member_via_external_user(): void
+    public function test_admin_can_add_member(): void
     {
         $project = $this->makeProject(['code' => 'ADDM']);
 
-        $provisioned = User::create([
-            'name'      => 'Provisioned User',
-            'email'     => 'prov@test.local',
+        $newUser = User::create([
+            'name'      => 'New Member',
+            'email'     => 'newmember@test.local',
             'password'  => bcrypt('x'),
-            'role'      => 'tester',
-            'role_id'   => $this->tester->role_id,
+            'role'      => 'QA',
             'is_active' => true,
         ]);
 
-        $this->mock(RtmfMemberService::class, function ($mock) use ($provisioned) {
-            $mock->shouldReceive('findOrProvisionByExternalId')
-                ->once()
-                ->with('ext-uuid-123')
-                ->andReturn($provisioned);
-        });
-
         $res = $this->actingAs($this->admin)
             ->postJson("/api/rtmf-projects/{$project->id}/members", [
-                'externalUserId' => 'ext-uuid-123',
-                'projectRole'    => 'qa',
+                'userId'      => $newUser->id,
+                'projectRole' => 'qa',
             ]);
 
         $res->assertOk()->assertJsonPath('data.success', true);
         $this->assertDatabaseHas('rtmf_project_users', [
             'project_id' => $project->id,
-            'user_id'    => $provisioned->id,
+            'user_id'    => $newUser->id,
             'role'       => 'qa',
         ]);
     }
 
-    public function test_add_member_returns_404_when_external_user_not_found(): void
+    public function test_add_member_returns_404_when_user_not_found(): void
     {
         $project = $this->makeProject(['code' => 'NOTFND']);
 
-        $this->mock(RtmfMemberService::class, function ($mock) {
-            $mock->shouldReceive('findOrProvisionByExternalId')
-                ->once()
-                ->andReturn(null);
-        });
-
         $this->actingAs($this->admin)
             ->postJson("/api/rtmf-projects/{$project->id}/members", [
-                'externalUserId' => 'missing-id',
-                'projectRole'    => 'viewer',
+                'userId'      => 99999,
+                'projectRole' => 'viewer',
             ])
-            ->assertStatus(404)
-            ->assertJsonPath('error.code', 'USER_NOT_FOUND');
+            ->assertStatus(422);
     }
 
     public function test_add_member_validates_required_fields(): void
@@ -338,8 +323,8 @@ class RtmfProjectTest extends TestCase
 
         $this->actingAs($this->admin)
             ->postJson("/api/rtmf-projects/{$project->id}/members", [
-                'externalUserId' => 'some-id',
-                'projectRole'    => 'superuser',
+                'userId'      => $this->tester->id,
+                'projectRole' => 'superuser',
             ])
             ->assertStatus(422);
     }
@@ -349,16 +334,10 @@ class RtmfProjectTest extends TestCase
         $project = $this->makeProject(['code' => 'IDEM']);
         $this->addMember($project, $this->tester, 'viewer');
 
-        $this->mock(RtmfMemberService::class, function ($mock) {
-            $mock->shouldReceive('findOrProvisionByExternalId')
-                ->once()
-                ->andReturn($this->tester);
-        });
-
         $this->actingAs($this->admin)
             ->postJson("/api/rtmf-projects/{$project->id}/members", [
-                'externalUserId' => 'some-id',
-                'projectRole'    => 'viewer',
+                'userId'      => $this->tester->id,
+                'projectRole' => 'viewer',
             ])
             ->assertOk();
 
@@ -376,8 +355,8 @@ class RtmfProjectTest extends TestCase
 
         $this->actingAs($this->tester)
             ->postJson("/api/rtmf-projects/{$project->id}/members", [
-                'externalUserId' => 'x',
-                'projectRole'    => 'viewer',
+                'userId'      => $this->admin->id,
+                'projectRole' => 'viewer',
             ])
             ->assertStatus(403);
     }
