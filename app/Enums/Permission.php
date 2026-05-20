@@ -60,10 +60,23 @@ class Permission
     // Audit
     const AUDIT_READ = 'audit.read';
 
-    // RTMF
+    // RTMF — broad gate (all RTMF users)
     const RTMF_VIEW = 'rtmf.view';
 
+    // RTMF — project admin operations (create/delete projects, manage members)
     const RTMF_MANAGE = 'rtmf.manage';
+
+    // RTMF — can see and use the Page Catalog section
+    const RTMF_CATALOG = 'rtmf.catalog';
+
+    // RTMF — can access Import/Export tools (BA + Admin)
+    const RTMF_TOOLS = 'rtmf.tools';
+
+    // RTMF — can see the Project Tracker section (all RTMF roles including Viewer)
+    const RTMF_TRACKER = 'rtmf.tracker';
+
+    // RTMF — can write feedback entries (BA, QA, Technical, Developer, Admin)
+    const RTMF_FEEDBACK = 'rtmf.feedback';
 
     public static function all(): array
     {
@@ -77,6 +90,7 @@ class Permission
             self::MENUS_VIEW, self::MENUS_EDIT,
             self::AUDIT_READ,
             self::RTMF_VIEW, self::RTMF_MANAGE,
+            self::RTMF_CATALOG, self::RTMF_TOOLS, self::RTMF_TRACKER, self::RTMF_FEEDBACK,
         ];
     }
 }

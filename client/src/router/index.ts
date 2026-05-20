@@ -53,6 +53,7 @@ import StorefrontHomeView from "@/views/StorefrontHomeView.vue";
 import StorefrontPageView from "@/views/StorefrontPageView.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
+import { useRtmfProjectStore } from "@/stores/rtmfProject";
 
 const legacyAdminPaths = [
   "/login",
@@ -141,7 +142,29 @@ const router = createRouter({
     { path: "/admin/cr",      name: "cr-tracking",      component: CrTrackingView,      meta: { requiresAuth: true, title: "CR Tracking" } },
     { path: "/admin/catalog-tracking", name: "catalog-tracking", component: PageCatalogTrackingView, meta: { requiresAuth: true, title: "Page Catalog Tracking" } },
 
-    { path: "/admin/rtmf-frontends", redirect: "/admin/rtmf/frontends" },
+    // ── Project-scoped routes (Option B URLs) ──────────────────────────────
+    { path: "/admin/rtmf/projects/:projectId/dashboard",       name: "project-dashboard",       component: RtmfDashboardView,       meta: { requiresAuth: true, title: "Dashboard" } },
+    { path: "/admin/rtmf/projects/:projectId/frontends",       name: "project-frontends",       component: RtmfListView,            meta: { requiresAuth: true, title: "Pages" } },
+    { path: "/admin/rtmf/projects/:projectId/frontends/new",   name: "project-frontend-create", component: RtmfEditorView,          meta: { requiresAuth: true, title: "New Page" } },
+    { path: "/admin/rtmf/projects/:projectId/frontends/:id",   name: "project-frontend-edit",   component: RtmfEditorView,          meta: { requiresAuth: true, title: "Edit Page" } },
+    { path: "/admin/rtmf/projects/:projectId/modules",         name: "project-modules",         component: RtmfModulesListView,     meta: { requiresAuth: true, title: "Modules" } },
+    { path: "/admin/rtmf/projects/:projectId/modules/new",     name: "project-module-create",   component: RtmfModuleEditorView,    meta: { requiresAuth: true, title: "New Module" } },
+    { path: "/admin/rtmf/projects/:projectId/modules/:id",     name: "project-module-edit",     component: RtmfModuleEditorView,    meta: { requiresAuth: true, title: "Edit Module" } },
+    { path: "/admin/rtmf/projects/:projectId/actors",          name: "project-actors",          component: RtmfActorsListView,      meta: { requiresAuth: true, title: "Actors" } },
+    { path: "/admin/rtmf/projects/:projectId/actors/new",      name: "project-actor-create",    component: RtmfActorEditorView,     meta: { requiresAuth: true, title: "New Actor" } },
+    { path: "/admin/rtmf/projects/:projectId/actors/:id",      name: "project-actor-edit",      component: RtmfActorEditorView,     meta: { requiresAuth: true, title: "Edit Actor" } },
+    { path: "/admin/rtmf/projects/:projectId/scenarios",       name: "project-scenarios",       component: RtmfScenariosListView,   meta: { requiresAuth: true, title: "Flow Scenarios" } },
+    { path: "/admin/rtmf/projects/:projectId/scenarios/new",   name: "project-scenario-create", component: RtmfScenarioEditorView,  meta: { requiresAuth: true, title: "New Scenario" } },
+    { path: "/admin/rtmf/projects/:projectId/scenarios/:id",   name: "project-scenario-edit",   component: RtmfScenarioEditorView,  meta: { requiresAuth: true, title: "Edit Scenario" } },
+    { path: "/admin/rtmf/projects/:projectId/relations",       name: "project-relations",       component: RtmfPageRelationsView,   meta: { requiresAuth: true, title: "Page Relations" } },
+    { path: "/admin/rtmf/projects/:projectId/import",          name: "project-import",          component: RtmfImportView,          meta: { requiresAuth: true, title: "Import" } },
+    { path: "/admin/rtmf/projects/:projectId/export",          name: "project-export",          component: RtmfExportView,          meta: { requiresAuth: true, title: "Export" } },
+    { path: "/admin/rtmf/projects/:projectId/defects",         name: "project-defects",         component: DefectReportingView,     meta: { requiresAuth: true, title: "Defects" } },
+    { path: "/admin/rtmf/projects/:projectId/cr",              name: "project-cr",              component: CrTrackingView,          meta: { requiresAuth: true, title: "Change Requests" } },
+    { path: "/admin/rtmf/projects/:projectId/tracking",        name: "project-tracking",        component: PageCatalogTrackingView, meta: { requiresAuth: true, title: "Catalog Tracking" } },
+
+    // ── Legacy flat-route redirects → active project ────────────────────
+    { path: "/admin/rtmf-frontends",     redirect: "/admin/rtmf/frontends" },
     { path: "/admin/rtmf-frontends/new", redirect: "/admin/rtmf/frontends/new" },
     { path: "/admin/rtmf-frontends/:id", redirect: (to: RouteLocationGeneric) => `/admin/rtmf/frontends/${String(to.params.id ?? "")}` },
     { path: "/admin/kitchen-sink", name: "kitchen-sink", component: KitchenSinkView, meta: { requiresAuth: true, title: "Kitchen Sink" } },
@@ -253,6 +276,7 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
+  const rtmfProjectStore = useRtmfProjectStore();
   await auth.initialize();
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
@@ -267,16 +291,34 @@ router.beforeEach(async (to) => {
     return { name: "main-dashboard" };
   }
 
-  if (auth.isTester) {
-    const path = to.path;
-    const isRtmfRoute = path.startsWith("/admin/rtmf");
-    const isNewRoute = path.endsWith("/new");
-
-    if (!isRtmfRoute) {
-      return { name: "rtmf-dashboard" };
+  if (auth.isAuthenticated && !auth.isAdmin) {
+    // Block admin-only sections for non-admin users
+    const adminOnlyPrefixes = [
+      "/admin/platform/",
+      "/admin/rtmf/projects",   // Setup — projects list/management
+      "/admin/tools/",
+      "/admin/administration/",
+      "/admin/settings",
+      "/admin/posts",
+      "/admin/pages",
+      "/admin/media",
+      "/admin/categories",
+      "/admin/menus",
+      "/admin/webfront",
+    ];
+    if (adminOnlyPrefixes.some((p) => to.path.startsWith(p))) {
+      return { name: "main-dashboard" };
     }
-    if (isNewRoute) {
-      return { name: "rtmf-frontends" };
+
+    // Project-scoped route: verify user is a member of the requested project
+    const projectId = to.params.projectId ? Number(to.params.projectId) : null;
+    if (projectId) {
+      await rtmfProjectStore.loadProjects();
+      const isMember = rtmfProjectStore.projects.some((p) => p.id === projectId);
+      if (!isMember) return { name: "main-dashboard" };
+
+      // Set active project from URL
+      rtmfProjectStore.setActive(projectId);
     }
   }
 

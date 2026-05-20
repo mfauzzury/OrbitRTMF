@@ -14,8 +14,8 @@ class StoreRtmfProjectMemberRequest extends BaseFormRequest
     public function rules(): array
     {
         return [
-            'external_user_id' => 'required|string',
-            'project_role'     => 'required|string|in:' . implode(',', RtmfProject::MEMBER_ROLES),
+            'user_id'      => 'required|integer|exists:users,id',
+            'project_role' => 'required|string|in:' . implode(',', RtmfProject::MEMBER_ROLES),
         ];
     }
 }

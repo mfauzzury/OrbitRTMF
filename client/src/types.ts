@@ -390,6 +390,14 @@ export type User = {
   name: string;
   photoUrl?: string;
   role?: string;
+  permissions?: string[];
+};
+
+export type MemberCandidate = {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
 };
 
 export type PostInput = {

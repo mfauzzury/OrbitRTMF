@@ -415,7 +415,7 @@ export async function addRtmfProjectMember(projectId: number, input: { userId: n
 
 export async function updateRtmfProjectMember(projectId: number, userId: number, input: { projectRole?: string }) {
   return apiRequest<{ data: RtmfProjectMember }>(`/api/rtmf-projects/${projectId}/members/${userId}`, {
-    method: "PUT",
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }

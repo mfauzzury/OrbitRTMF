@@ -12,7 +12,12 @@ export const useAuthStore = defineStore("auth", {
   getters: {
     isAuthenticated: (state) => Boolean(state.user),
     isAdmin: (state) => state.user?.role?.toLowerCase() === 'admin',
-    isTester: (state) => state.user?.role?.toLowerCase() === 'tester',
+    isViewer: (state) => state.user?.role?.toLowerCase() === 'viewer',
+    permissions: (state): string[] => state.user?.permissions ?? [],
+    can: (state) => (permission: string): boolean => {
+      if (state.user?.role?.toLowerCase() === 'admin') return true;
+      return (state.user?.permissions ?? []).includes(permission);
+    },
   },
   actions: {
     async initialize() {

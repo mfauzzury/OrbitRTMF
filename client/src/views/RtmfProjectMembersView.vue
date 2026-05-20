@@ -6,14 +6,27 @@ import AdminLayout from "@/layouts/AdminLayout.vue";
 import {
   getRtmfProject,
   listRtmfProjectMembers,
+  listRtmfProjectCandidates,
   addRtmfProjectMember,
   updateRtmfProjectMember,
   removeRtmfProjectMember,
 } from "@/api/rtmf";
-import { listExternalUsers } from "@/api/cms";
 import { useToast } from "@/composables/useToast";
 import { useConfirmDialog } from "@/composables/useConfirmDialog";
-import type { ExternalUser, RtmfProject, RtmfProjectMember } from "@/types";
+import type { MemberCandidate, RtmfProject, RtmfProjectMember } from "@/types";
+
+const SYSTEM_TO_PROJECT_ROLE: Record<string, string> = {
+  admin: "admin",
+  ba: "business_analyst",
+  qa: "qa",
+  technical: "technical",
+  developer: "developer",
+  viewer: "viewer",
+};
+
+function suggestProjectRole(systemRole: string): string {
+  return SYSTEM_TO_PROJECT_ROLE[systemRole?.toLowerCase()] ?? "viewer";
+}
 
 const ROLES = [
   { value: "admin",            label: "Admin" },
@@ -40,7 +53,7 @@ const { confirm } = useConfirmDialog();
 const projectId = Number(route.params.id);
 const project = ref<RtmfProject | null>(null);
 const members = ref<RtmfProjectMember[]>([]);
-const allExternalUsers = ref<ExternalUser[]>([]);
+const allCandidates = ref<MemberCandidate[]>([]);
 const loadError = ref<string | null>(null);
 const adding = ref(false);
 const editingRoleId = ref<number | null>(null);
@@ -49,32 +62,29 @@ const editingRole = ref("");
 // Add member form state
 const searchQ = ref("");
 const showDropdown = ref(false);
-const selectedUser = ref<ExternalUser | null>(null);
+const selectedUser = ref<MemberCandidate | null>(null);
 const addRole = ref("viewer");
 const searchInputRef = ref<HTMLInputElement | null>(null);
-
-const memberEmails = computed(() => new Set(members.value.map((m) => m.email)));
 
 const dropdownCandidates = computed(() => {
   const q = searchQ.value.trim().toLowerCase();
   if (!q) return [];
-  return allExternalUsers.value
-    .filter((u) => {
-      if (memberEmails.value.has(u.email)) return false;
-      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-    })
+  return allCandidates.value
+    .filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
     .slice(0, 8);
 });
 
-function selectUser(u: ExternalUser) {
+function selectUser(u: MemberCandidate) {
   selectedUser.value = u;
   searchQ.value = u.name;
+  addRole.value = suggestProjectRole(u.role);
   showDropdown.value = false;
 }
 
 function clearSelection() {
   selectedUser.value = null;
   searchQ.value = "";
+  addRole.value = "viewer";
   showDropdown.value = false;
   searchInputRef.value?.focus();
 }
@@ -101,10 +111,10 @@ async function loadMembers() {
   }
 }
 
-async function loadExternalUsers() {
+async function loadCandidates() {
   try {
-    const res = await listExternalUsers();
-    allExternalUsers.value = res.data;
+    const res = await listRtmfProjectCandidates(projectId);
+    allCandidates.value = res.data;
   } catch {
     toast.error("Failed to fetch users");
   }
@@ -118,7 +128,7 @@ onMounted(async () => {
     loadError.value = "Project not found.";
     return;
   }
-  await Promise.all([loadMembers(), loadExternalUsers()]);
+  await Promise.all([loadMembers(), loadCandidates()]);
 });
 
 async function confirmAdd() {
@@ -126,8 +136,9 @@ async function confirmAdd() {
   const user = selectedUser.value;
   adding.value = true;
   try {
-    await addRtmfProjectMember(projectId, { externalUserId: user.id, projectRole: addRole.value });
-    await loadMembers();
+    await addRtmfProjectMember(projectId, { userId: user.id, projectRole: addRole.value });
+    await Promise.all([loadMembers(), loadCandidates()]);
+
     toast.success(`${user.name} added as ${roleLabelFor(addRole.value)}`);
     clearSelection();
   } catch {

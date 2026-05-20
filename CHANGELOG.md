@@ -9,6 +9,31 @@ All notable changes to this project are documented in this file.
 - Redesign topbar with a darker "PowerBar" concept.
 - Build notification module and add topbar notifications dropdown (similar to settings) showing the latest 5 notifications.
 
+## [1.4.0] - 2026-05-20
+
+### Added
+- **Role-based access control (RBAC) — full role expansion** — introduced 4 new system roles (BA, QA, Technical, Developer) alongside existing Admin and Viewer. Each role carries a permission set that gates menu groups and routes.
+- **New permissions**: `rtmf.catalog` (Page Catalog section), `rtmf.tools` (Import/Export), `rtmf.tracker` (Project Tracker), `rtmf.feedback` (feedback write). Registered in `Permission::all()` and exposed in the RBAC roles editor.
+- **Permission-based menu filtering** — `AdminLayout` now filters sidebar groups by `requiredPermissions` against the logged-in user's permission set. Groups: Page Catalog (`rtmf.catalog`), Tools (`rtmf.tools`), Setup/Projects (`rtmf.manage`), Project Tracker (`rtmf.tracker`), Portal (`posts.view`), Administration (`users.view`).
+- **Permission-based router guards** — navigation guard replaces the old `isTester` block. Users without `rtmf.catalog` are redirected to Project Tracker; users without `rtmf.tools` cannot access Import/Export; users without `rtmf.manage` cannot access Setup/Projects.
+- **`can()` permission helper** in auth store — `auth.can('rtmf.catalog')` returns `true` for Admin unconditionally, or checks the user's permissions array for all other roles.
+- **`isViewer` getter** in auth store.
+- **Project member role update** — `PATCH /api/rtmf-projects/{id}/members/{userId}` endpoint with `UpdateRtmfProjectMemberRequest` validation. Frontend `RtmfProjectMembersView` supports inline role editing per member.
+- **Auto-suggest project role** when adding a project member — system role is mapped to the closest project role (`BA → business_analyst`, `QA → qa`, etc.); admin can override before saving.
+- **Member candidates from local users** — `addMember` and candidate search now use the local `users` table instead of the external testagent API. `StoreRtmfProjectMemberRequest` validates `user_id` against `users.id`.
+- **`MemberCandidate` TypeScript type** added to `types.ts`.
+- **All RBAC permissions visible as checkboxes** in the Roles editor (`/admin/platform/identity/roles`) — previously the `availablePermissions` list was incomplete; now includes all `rtmf.*` and `audit.*` permissions.
+- **`UserAccessControlTest`** — 67 feature tests covering `hasPermission()`, `/me` payload, read access per role, project management gates, catalog write, feedback enforcement, ExternalAuthService provisioning, and add-member flow.
+
+### Changed
+- **ExternalAuthService (testagent login)** — testagent is now credential-only. New users are provisioned as `Viewer` by default (admin promotes them). Existing users' `role` and `role_id` are never overwritten on re-login; only `name` and `password` are synced.
+- **Auth `/me` payload** now includes `permissions` array — Admin receives all permissions; other roles receive their role model's permission set.
+- **`RtmfProjectMembersView`** switched from `externalUserId` to `userId` in the add-member payload, removing the testagent dependency from the write path.
+- **DB migrations** — `2026_05_19_000003` seeds BA, QA, Technical, Developer roles; `2026_05_19_000004` adds `rtmf.tools` to Admin and BA roles.
+
+### Fixed
+- **`updateRtmfProjectMember` HTTP method mismatch** — frontend was sending `PUT` but the route is registered as `PATCH`, causing 405 errors on inline role edits in the Members page.
+
 ## [1.3.0] - 2026-05-20
 
 ### Fixed

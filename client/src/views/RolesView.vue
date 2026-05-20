@@ -30,6 +30,9 @@ const availablePermissions = [
   "roles.view", "roles.create", "roles.edit", "roles.delete",
   "settings.view", "settings.edit",
   "menus.view", "menus.edit",
+  "audit.read",
+  "rtmf.view", "rtmf.manage",
+  "rtmf.catalog", "rtmf.tools", "rtmf.tracker", "rtmf.feedback",
 ];
 
 const form = ref<RoleInput>({

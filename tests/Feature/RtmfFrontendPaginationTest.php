@@ -59,20 +59,17 @@ class RtmfFrontendPaginationTest extends TestCase
             ->assertJsonPath('meta.page', 1)
             ->assertJsonPath('meta.total', 30);
 
-        $page2 = $this->getJson('/api/rtmf-frontends?page_num=2&limit=10&sort_by=spec_id&sort_dir=asc', [
-            'X-Page-Num' => '2',
-            'X-Limit' => '10',
-        ]);
+        $page2 = $this->getJson('/api/rtmf-frontends?page=2&limit=10&sort_by=spec_id&sort_dir=asc');
         $page2->assertOk()
             ->assertJsonPath('meta.page', 2);
 
-        $ids1 = collect($page1->json('data'))->pluck('spec_id')->all();
-        $ids2 = collect($page2->json('data'))->pluck('spec_id')->all();
+        $ids1 = collect($page1->json('data'))->pluck('specId')->all();
+        $ids2 = collect($page2->json('data'))->pluck('specId')->all();
 
         $this->assertCount(10, $ids1);
         $this->assertCount(10, $ids2);
         $this->assertEmpty(array_intersect($ids1, $ids2));
-        $this->assertSame('TST-PG-01', $ids1[0]);
-        $this->assertSame('TST-PG-11', $ids2[0]);
+        $this->assertSame('TST-PG-01', $ids1[0] ?? null);
+        $this->assertSame('TST-PG-11', $ids2[0] ?? null);
     }
 }
