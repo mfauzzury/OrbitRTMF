@@ -345,7 +345,7 @@ export async function createRtmfApiEndpoint(frontendId: number, input: RtmfFront
 
 export async function updateRtmfApiEndpoint(frontendId: number, id: number, input: Partial<RtmfFrontendApiEndpointInput>) {
   return apiRequest<{ data: RtmfFrontendApiEndpoint }>(`/api/rtmf-frontends/${frontendId}/api-endpoints/${id}`, {
-    method: "PUT",
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }
@@ -401,8 +401,13 @@ export async function listRtmfProjectMembers(projectId: number) {
   return apiRequest<{ data: RtmfProjectMember[] }>(`/api/rtmf-projects/${projectId}/members`);
 }
 
-export async function addRtmfProjectMember(projectId: number, input: { externalUserId: string; projectRole?: string }) {
-  return apiRequest<{ data: RtmfProjectMember }>(`/api/rtmf-projects/${projectId}/members`, {
+export async function listRtmfProjectCandidates(projectId: number, q?: string) {
+  const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+  return apiRequest<{ data: import("@/types").MemberCandidate[] }>(`/api/rtmf-projects/${projectId}/candidates${qs}`);
+}
+
+export async function addRtmfProjectMember(projectId: number, input: { userId: number; projectRole: string }) {
+  return apiRequest<{ data: { success: boolean } }>(`/api/rtmf-projects/${projectId}/members`, {
     method: "POST",
     body: JSON.stringify(input),
   });

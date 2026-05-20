@@ -9,6 +9,12 @@ All notable changes to this project are documented in this file.
 - Redesign topbar with a darker "PowerBar" concept.
 - Build notification module and add topbar notifications dropdown (similar to settings) showing the latest 5 notifications.
 
+## [1.3.0] - 2026-05-20
+
+### Fixed
+- **Page ID reuse after delete** — `spec_id` unique constraint now only applies to non-deleted rows. Added PostgreSQL partial unique index (`WHERE deleted_at IS NULL`) via migration, replacing the blanket unique constraint. Form request validation updated to use `Rule::unique()->whereNull('deleted_at')` so soft-deleted spec_ids pass validation and can be reused immediately.
+- **Save failed on API Endpoints tab** — `updateRtmfApiEndpoint()` was sending `PUT` but the route only registered `PATCH`. Fixed method to `PATCH`.
+
 ## [1.2.9] - 2026-05-18
 
 ### Added

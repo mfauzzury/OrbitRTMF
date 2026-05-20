@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use Illuminate\Validation\Rule;
+
 class StoreRtmfFrontendRequest extends BaseFormRequest
 {
     public function authorize(): bool
@@ -12,7 +14,7 @@ class StoreRtmfFrontendRequest extends BaseFormRequest
     public function rules(): array
     {
         return [
-            'spec_id' => 'required|string|max:64|unique:rtmf_frontends,spec_id',
+            'spec_id' => ['required', 'string', 'max:64', Rule::unique('rtmf_frontends', 'spec_id')->whereNull('deleted_at')],
             'module_id' => 'required|integer|exists:rtmf_modules,id',
             'sub_module_id' => 'nullable|integer|exists:rtmf_sub_modules,id',
             'actor_ids' => 'nullable|array',
